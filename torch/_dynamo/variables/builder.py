@@ -729,6 +729,11 @@ class VariableBuilder:
         elif TorchCtxManagerClassVariable.is_matching_cls(value):
             self.install_guards(GuardBuilder.FUNCTION_MATCH)
             return TorchCtxManagerClassVariable(value, source=self.source)
+        elif value == torch._dynamo.external_utils.is_fullgraph_compiling:
+            self.install_guards(GuardBuilder.FULLGRAPH)
+            return trace_rules.lookup(value).create_with_source(
+                value, source=self.source
+            )
         elif is_function_or_wrapper(value):
             value, attr_name = unwrap_with_attr_name_if_wrapper(value)
             # For these wrappers, Dynamo points to the wrapped function,

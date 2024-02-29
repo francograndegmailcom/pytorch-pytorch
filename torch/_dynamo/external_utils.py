@@ -15,6 +15,10 @@ def is_compiling() -> bool:
     return False
 
 
+def is_fullgraph_compiling() -> bool:
+    return False
+
+
 def wrap_inline(fn):
     """
     Create an extra frame around fn that is not in skipfiles

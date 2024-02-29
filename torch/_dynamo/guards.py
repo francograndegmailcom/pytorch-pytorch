@@ -105,6 +105,7 @@ CLOSURE_VARS = {
     "___tuple_iterator_len": tuple_iterator_len,
     "___tuple_iterator_getitem": tuple_iterator_getitem,
     "__math_isnan": math.isnan,
+    "___check_current_fullgraph": torch._dynamo.eval_frame.check_nopython,
     "__numpy_isnan": np.isnan,
     "inf": float("inf"),
     "__load_module": importlib.import_module,
@@ -499,6 +500,12 @@ class GuardBuilder(GuardBuilderBase):
             self.ID_MATCH(guard)
         else:
             self.EQUALS_MATCH(guard)
+
+    def FULLGRAPH(self, guard: Guard):
+        code = [
+            f"___check_current_fullgraph({torch._dynamo.eval_frame.guarded_backend_cache.nopython})"
+        ]
+        self._produce_guard_code(guard, code)
 
     def NN_MODULE(self, guard: Guard):
         self.ID_MATCH(guard)
