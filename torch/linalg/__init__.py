@@ -781,7 +781,7 @@ householder_product(A, tau, *, out=None) -> Tensor
 Computes the first `n` columns of a product of Householder matrices.
 
 Let :math:`\mathbb{K}` be :math:`\mathbb{R}` or :math:`\mathbb{C}`, and
-let :math:`V \in \mathbb{K}^{m \times n}` be a matrix with columns :math:`v_i \in \mathbb{K}^m`
+let :math:`A \in \mathbb{K}^{m \times n}` be a matrix with columns :math:`v_i \in \mathbb{K}^m`
 for :math:`i=1,\ldots,m` with :math:`m \geq n`. Denote by :math:`w_i` the vector resulting from
 zeroing out the first :math:`i-1` components of :math:`v_i` and setting to `1` the :math:`i`-th.
 For a vector :math:`\tau \in \mathbb{K}^k` with :math:`k \leq n`, this function computes the
