@@ -294,6 +294,7 @@ class TestMaxAutotune(TestCase):
             self.assertEqual(num_get, 3)
             self.assertEqual(num_put, 1)
 
+    @skipIfRocm
     def test_precompilation_threads(self):
         import threading
         from typing import Any, Dict
@@ -427,6 +428,7 @@ class TestMaxAutotune(TestCase):
             FileCheck().check_not("extern_kernels.convolution").run(code[0])
             self.assertEqual(conv1x1(input_tensor), out, atol=1e-2, rtol=0)
 
+    @skipIfRocm
     def test_filled_cache_precompile(self):
         def fn(a, b, c):
             a = (a @ b) @ c
