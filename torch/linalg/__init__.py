@@ -776,7 +776,7 @@ Examples::
 """)
 
 householder_product = _add_docstr(_linalg.linalg_householder_product, r"""
-householder_product(A, tau, *, out=None) -> Tensor
+householder_product(V, tau, *, out=None) -> Tensor
 
 Computes the first `n` columns of a product of Householder matrices.
 
@@ -793,7 +793,7 @@ first :math:`n` columns of the matrix
 
 where :math:`\mathrm{I}_m` is the `m`-dimensional identity matrix and :math:`w^{\text{H}}` is the
 conjugate transpose when :math:`w` is complex, and the transpose when :math:`w` is real-valued.
-The output matrix is the same size as the input matrix :attr:`A`.
+The output matrix is the same size as the input matrix :attr:`V`.
 
 See `Representation of Orthogonal or Unitary Matrices`_ for further details.
 
@@ -815,14 +815,14 @@ the output has the same batch dimensions.
     If this condition is not met, no error will be thrown, but the gradient produced may contain `NaN`.
 
 Args:
-    A (Tensor): tensor of shape `(*, m, n)` where `*` is zero or more batch dimensions.
+    V (Tensor): tensor of shape `(*, m, n)` where `*` is zero or more batch dimensions.
     tau (Tensor): tensor of shape `(*, k)` where `*` is zero or more batch dimensions.
 
 Keyword args:
     out (Tensor, optional): output tensor. Ignored if `None`. Default: `None`.
 
 Raises:
-    RuntimeError: if :attr:`A` doesn't satisfy the requirement `m >= n`,
+    RuntimeError: if :attr:`V` doesn't satisfy the requirement `m >= n`,
                   or :attr:`tau` doesn't satisfy the requirement `n >= k`.
 
 Examples::
