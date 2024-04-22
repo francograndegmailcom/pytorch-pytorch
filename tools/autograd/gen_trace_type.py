@@ -290,7 +290,8 @@ if (jit::tracer::isTracing()) {
   ${add_trace_inputs}
   tracer_state->insertNode(node);
   ${inplace_guard}
-  jit::tracer::setTracingState(nullptr);
+  if(${disable_trace})
+    jit::tracer::setTracingState(nullptr);
 }
 """
 )
@@ -319,6 +320,7 @@ def format_prerecord_trace(f: NativeFunction) -> str:
     )
 
     return PRE_RECORD_TRACE.substitute(
+        disable_trace=int(cpp.name(f.func) not in ["linear", "matmul"]),
         set_op_name=format_trace_op_name(f),
         add_trace_inputs=format_trace_inputs(f) + additional_inputs,
         inplace_guard=INPLACE_GUARD.substitute(
@@ -335,8 +337,10 @@ def format_prerecord_trace(f: NativeFunction) -> str:
 POST_RECORD_TRACE = CodeTemplate(
     """\
 if (tracer_state) {
-  jit::tracer::setTracingState(std::move(tracer_state));
+  if(${disable_trace})
+    jit::tracer::setTracingState(std::move(tracer_state));
   ${add_trace_outputs}
+  ${track_stored_outputs}
 }
 """
 )
@@ -358,7 +362,11 @@ def format_postrecord_trace(f: NativeFunction) -> str:
             outputs = [
                 f"jit::tracer::addOutput(node, {n});" for n in output_names_outplace
             ]
-            return POST_RECORD_TRACE.substitute(add_trace_outputs=outputs)
+            return POST_RECORD_TRACE.substitute(
+            disable_trace=int(cpp.name(f.func) not in ["linear", "matmul"]),
+                add_trace_outputs=outputs,
+                track_stored_outputs="// case 1"
+            )
 
         selection = SELECT.substitute(
             cond="force_outplace",
@@ -369,11 +377,37 @@ def format_postrecord_trace(f: NativeFunction) -> str:
                 f"jit::tracer::addOutput(node, {n});" for n in output_names_inplace
             ),
         )
-        return POST_RECORD_TRACE.substitute(add_trace_outputs=selection)
+        return POST_RECORD_TRACE.substitute(
+            disable_trace=int(cpp.name(f.func) not in ["linear", "matmul"]),
+            add_trace_outputs=selection,
+            track_stored_outputs="// case 2"
+        )
     else:
         output_names = cpp.return_names(f)
         outputs = [f"jit::tracer::addOutput(node, {n});" for n in output_names]
-        return POST_RECORD_TRACE.substitute(add_trace_outputs=outputs)
+        track_stored_outputs="// case 3"
+
+        return_type = cpp.returns_type(f.func.returns, symint=True).cpp_type()
+        if return_type == "at::Tensor":
+            
+            track_stored_outputs=""
+            track_stored_outputs+=f"auto *meta = torch::autograd::impl::materialize_autograd_meta({output_names[0]});\n"
+            track_stored_outputs+="if(meta->grad_fn_)\n"
+            track_stored_outputs+="{\n"
+            track_stored_outputs+="    auto saved_outputs = meta->grad_fn_->stored_outputs();\n"
+            track_stored_outputs+="    for( auto savedvar : saved_outputs )\n"
+            track_stored_outputs+="    {\n"
+            track_stored_outputs+="        auto *value = jit::tracer::getValueTrace(*(savedvar->orig_variable));\n"
+            track_stored_outputs+="        auto var_stored = saved_outputs[0]->unpack(meta->grad_fn_);\n"
+            track_stored_outputs+="        jit::tracer::setValueTrace(var_stored, value);\n"
+            track_stored_outputs+="    }\n"
+            track_stored_outputs+="}\n"
+            
+        return POST_RECORD_TRACE.substitute(
+            disable_trace=int(cpp.name(f.func) not in ["linear", "matmul"]),
+            add_trace_outputs=outputs,
+            track_stored_outputs=track_stored_outputs
+        )
 
 
 def declare_returned_variables(f: NativeFunction) -> str:
@@ -450,7 +484,7 @@ def emit_trace_body(f: NativeFunction) -> List[str]:
 
 METHOD_DEFINITION = CodeTemplate(
     """\
-${return_type} ${type_wrapper_name}(${formals}) {
+${return_type} ${type_wrapper_name}(${formals}) { // std::cerr << "trace ${type_wrapper_name} " << __FILE__ << "," << __LINE__ << std::endl;
   ${type_definition_body}
 }
 """

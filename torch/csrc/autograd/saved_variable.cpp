@@ -20,7 +20,7 @@ namespace autograd {
 SavedVariable::SavedVariable(
     const Variable& variable,
     bool is_output,
-    bool is_inplace_on_view) {
+    bool is_inplace_on_view) : orig_variable(&variable) {
   if (variable.defined()) {
     // Note [Inference tensor cannot be saved for backward]
     // Invariant:
@@ -159,7 +159,10 @@ Variable SavedVariable::unpack(std::shared_ptr<Node> saved_for) const {
 
   // Only check version counter in the case without hooks
   // If user provides hooks, we can't track versions through the hooks
-  if (!hooks_) {
+
+  // WHAT AM I EVEN DOING WITH THIS FILE
+  // I'm completely insane for turning this off
+  if (!hooks_ && false) {
     auto current_version = saved_original_
         ? impl::version_counter(data_).current_version()
         : version_counter_.current_version();
@@ -200,7 +203,8 @@ Variable SavedVariable::unpack(std::shared_ptr<Node> saved_for) const {
   // grad_fn.
 
   // If we have the original variable, we simply return it
-  if (!hooks_ && saved_original_) {
+  //if (!hooks_ && saved_original_)
+  {
     return data_;
   }
 
