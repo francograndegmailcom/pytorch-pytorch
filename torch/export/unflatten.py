@@ -172,8 +172,16 @@ class UnflattenedModule(torch.nn.Module):
         self.equality_constraints: List = []
 
         state_dict = export_module.state_dict
+
+        # handle weight-sharing by watching what we clone
+        id_to_param: Dict[int, torch.nn.Parameter] = {}
         for name in self.graph_signature.parameters:
-            cloned = torch.nn.Parameter(state_dict[name].clone())
+            tensor = state_dict[name]
+            if id(tensor) in id_to_param:
+                cloned = id_to_param[id(tensor)]
+            else:
+                cloned = torch.nn.Parameter(tensor.clone())
+                id_to_param[id(tensor)] = cloned
             _assign_attr(
                 cloned,
                 self,
@@ -551,9 +559,11 @@ class _ModuleFrame:
             _add_submodule(
                 parent.module,
                 accessor,
-                self.module
-                if self.cached_graph_module is None
-                else self.cached_graph_module,
+                (
+                    self.module
+                    if self.cached_graph_module is None
+                    else self.cached_graph_module
+                ),
             )
             self.parent_call_module = parent.graph.call_module(accessor)
 
@@ -582,9 +592,11 @@ class _ModuleFrame:
                         op="call_function",
                         target=operator.getitem,
                         args=(flat_args, idx),
-                        name=arg.name
-                        if not isinstance(arg, ConstantArgument)
-                        else f"_constant_{idx}",
+                        name=(
+                            arg.name
+                            if not isinstance(arg, ConstantArgument)
+                            else f"_constant_{idx}"
+                        ),
                     )
                     if isinstance(arg, ConstantArgument):
                         continue
