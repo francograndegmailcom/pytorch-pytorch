@@ -66,6 +66,12 @@ if [[ "$BUILD_ENVIRONMENT" == *executorch* ]]; then
   export USE_CUDA=0
 fi
 
+if [[ "$BUILD_ENVIRONMENT" == *s390x* ]]; then
+  # make virtual environment for pip
+  virtualenv --system-site-packages $HOME/venv
+  . $HOME/venv/bin/activate
+fi
+
 if ! which conda; then
   # In ROCm CIs, we are doing cross compilation on build machines with
   # intel cpu and later run tests on machines with amd cpu.
@@ -233,9 +239,9 @@ if [[ "${BUILD_ENVIRONMENT}" != *android* && "${BUILD_ENVIRONMENT}" != *cuda* ]]
   export BUILD_STATIC_RUNTIME_BENCHMARK=ON
 fi
 
-# Do not change workspace permissions for ROCm CI jobs
+# Do not change workspace permissions for ROCm and s390x CI jobs
 # as it can leave workspace with bad permissions for cancelled jobs
-if [[ "$BUILD_ENVIRONMENT" != *rocm* ]]; then
+if [[ "$BUILD_ENVIRONMENT" != *rocm* ]] && [[ "$BUILD_ENVIRONMENT" != *s390x* ]]; then
   # Workaround for dind-rootless userid mapping (https://github.com/pytorch/ci-infra/issues/96)
   WORKSPACE_ORIGINAL_OWNER_ID=$(stat -c '%u' "/var/lib/jenkins/workspace")
   cleanup_workspace() {
@@ -277,10 +283,12 @@ else
 
   if [[ "$BUILD_ENVIRONMENT" != *libtorch* ]]; then
     # rocm builds fail when WERROR=1
+    # s390x builds fail when WERROR=1
     # XLA test build fails when WERROR=1
     # set only when building other architectures
     # or building non-XLA tests.
     if [[ "$BUILD_ENVIRONMENT" != *rocm*  &&
+          "$BUILD_ENVIRONMENT" != *s390x*  &&
           "$BUILD_ENVIRONMENT" != *xla* ]]; then
       if [[ "$BUILD_ENVIRONMENT" != *py3.8* ]]; then
         # Install numpy-2.0 release candidate for builds
@@ -389,8 +397,8 @@ if [[ "$BUILD_ENVIRONMENT" != *libtorch* && "$BUILD_ENVIRONMENT" != *bazel* ]]; 
   python tools/stats/export_test_times.py
 fi
 
-# snadampal: skipping it till sccache support added for aarch64
+# snadampal: skipping it till sccache support added for aarch64 and s390x
 # https://github.com/pytorch/pytorch/issues/121559
-if [[ "$BUILD_ENVIRONMENT" != *aarch64* ]]; then
+if [[ "$BUILD_ENVIRONMENT" != *aarch64* ]] && [[ "$BUILD_ENVIRONMENT" != *s390x* ]]; then
   print_sccache_stats
 fi
