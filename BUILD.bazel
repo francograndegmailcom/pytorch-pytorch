@@ -476,7 +476,6 @@ filegroup(
     ],
 )
 
-
 filegroup(
     name = "caffe2_serialize_srcs",
     srcs = [
@@ -535,9 +534,22 @@ cc_library(
     name = "caffe2_headers",
     hdrs = glob(
         [
+            "caffe2/contrib/aten/*.h",
+            "caffe2/contrib/gloo/*.h",
+            "caffe2/core/*.h",
+            "caffe2/core/nomnigraph/include/nomnigraph/Converters/*.h",
+            "caffe2/core/nomnigraph/include/nomnigraph/Generated/*.h",
+            "caffe2/core/nomnigraph/include/nomnigraph/Graph/*.h",
+            "caffe2/core/nomnigraph/include/nomnigraph/Representations/*.h",
+            "caffe2/core/nomnigraph/include/nomnigraph/Support/*.h",
+            "caffe2/core/nomnigraph/include/nomnigraph/Transformations/*.h",
+            "caffe2/core/nomnigraph/tests/*.h",
+            "caffe2/db/*.h",
+            "caffe2/onnx/*.h",
             "caffe2/perfkernels/*.h",
             "caffe2/serialize/*.h",
             "caffe2/utils/*.h",
+            "caffe2/utils/math/*.h",
             "caffe2/utils/threadpool/*.h",
             "modules/**/*.h",
         ],
@@ -549,6 +561,9 @@ cc_library(
         "caffe2/image/*.h",
     ])),
     copts = CAFFE2_COPTS,
+    includes = [
+        "caffe2/core/nomnigraph/include",
+    ],
     visibility = ["//visibility:public"],
     deps = [
         ":caffe2_core_macros",
@@ -556,65 +571,6 @@ cc_library(
         "//caffe2/proto:caffe2_pb",
         "//caffe2/proto:cc_proto",
     ],
-)
-
-cc_library(
-    name = "caffe2",
-    srcs = [
-        ":caffe2_core_srcs",
-        ":caffe2_perfkernels_srcs",
-        ":caffe2_serialize_srcs",
-        ":caffe2_utils_srcs",
-    ],
-    copts = CAFFE2_COPTS + ["-mf16c"],
-    linkstatic = 1,
-    visibility = ["//visibility:public"],
-    deps = [
-        ":caffe2_core_macros",
-        ":caffe2_headers",
-        ":caffe2_perfkernels_avx",
-        ":caffe2_perfkernels_avx2",
-        ":caffe2_perfkernels_avx512",
-        "//caffe2/proto:caffe2_pb",
-        "//caffe2/proto:cc_proto",
-        "//third_party/miniz-2.1.0:miniz",
-        "@com_google_protobuf//:protobuf",
-        "@eigen",
-        "@fbgemm//:fbgemm_src_headers",
-        "@fmt",
-        "@foxi",
-        "@onnx",
-    ] + if_cuda(
-        [
-            ":aten_cuda",
-            "@tensorpipe//:tensorpipe_cuda",
-        ],
-        [
-            ":aten",
-            "@tensorpipe//:tensorpipe_cpu",
-        ],
-    ),
-    alwayslink = True,
-)
-
-cu_library(
-    name = "torch_cuda",
-    srcs = [
-        "torch/csrc/distributed/c10d/intra_node_comm.cu",
-        "torch/csrc/distributed/c10d/Utils.cu",
-        "torch/csrc/distributed/c10d/quantization/quantization_gpu.cu",
-    ],
-    copts = torch_cuda_half_options,
-    visibility = ["//visibility:public"],
-    deps = [
-        ":aten",
-        "@cuda//:cublas",
-        "@cuda//:curand",
-        "@cudnn",
-        "@eigen",
-        "@tensorpipe//:tensorpipe_cuda",
-    ],
-    alwayslink = True,
 )
 
 PERF_COPTS = [
@@ -779,9 +735,16 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        ":caffe2",
         ":torch_headers",
         "//caffe2/proto:torch_cc_proto",
+        "//third_party/miniz-2.1.0:miniz",
+        "@com_google_protobuf//:protobuf",
+        "@eigen",
+        "@fbgemm",
+        "@fmt",
+        "@foxi",
+        "@gloo",
+        "@ideep",
         "@kineto",
     ] + if_cuda([
         "@cuda//:nvToolsExt",
