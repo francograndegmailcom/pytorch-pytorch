@@ -75,6 +75,7 @@ except ImportError:
 # in other files (like test_export_nonstrict.py). `torch.export.export`
 # will invalidate the patch.
 from torch.export import export
+from torch.export._trace import _export
 
 
 torch.library.define("testlib::returns_tensor_symint", "(Tensor x) -> (Tensor, SymInt)")
@@ -2373,6 +2374,8 @@ class TestExport(TestCase):
             # Intentionally not wrapping `inp` in a tuple to trigger the error
             _ = export(M(), inp)
 
+    @testing.expectedFailureSerDer
+    @testing.expectedFailureRetraceability
     def test_decomp_batch_norm_functional_predispatch(self):
         class ConvBatchnorm(torch.nn.Module):
             def __init__(self):
@@ -2389,7 +2392,7 @@ class TestExport(TestCase):
         mod.eval()
         inp = torch.randn(1, 1, 3, 3)
 
-        gm = torch.export._trace._export(mod, (inp,), pre_dispatch=True).module()
+        gm = _export(mod, (inp,), pre_dispatch=True).module()
         self.assertExpectedInline(
             str(gm.code).strip(),
             """\
@@ -4073,7 +4076,7 @@ graph():
             self.assertEqual(v, torch_gm.state_dict()[normalized_k])
         self.assertTrue(torch.allclose(torch_gm(test_inp), orig_eager(test_inp)))
 
-        pre_autograd_gm = torch.export._trace._export(
+        pre_autograd_gm = _export(
             orig_eager, (torch.rand(2, 3),), {}, pre_dispatch=True
         ).module()
         for k, v in orig_eager.state_dict().items():
@@ -4379,6 +4382,8 @@ def forward(self, p_bar_linear_weight, p_bar_linear_bias, x):
         # this doesn't work today
         gm_unflat_strict = unflatten(ep)
 
+    @testing.expectedFailureSerDer
+    @testing.expectedFailureRetraceability
     def test_predispatch_cond(self):
         class Model(torch.nn.Module):
             def __init__(self):
@@ -4400,7 +4405,7 @@ def forward(self, p_bar_linear_weight, p_bar_linear_bias, x):
 
         model = Model()
         with torch.no_grad():
-            exported_program = torch.export._trace._export(
+            exported_program = _export(
                 model,
                 (torch.tensor(10), torch.tensor(12)),
                 {},
@@ -4439,6 +4444,7 @@ def forward(self, x, b_t, y):
     return add_1""",
         )
 
+    @testing.expectedFailureRetraceability
     def test_predispatch_grad_wrappers(self):
         class Model(torch.nn.Module):
             def forward(self, x, y):
@@ -4451,7 +4457,7 @@ def forward(self, x, b_t, y):
         # no grad
         model = Model()
         with torch.no_grad():
-            ep_nograd = torch.export._trace._export(
+            ep_nograd = _export(
                 model,
                 (torch.tensor(10), torch.tensor(12)),
                 {},
@@ -4472,7 +4478,7 @@ def forward(self, x, b_t, y):
 
         # enable grad
         model = Model()
-        ep_grad = torch.export._trace._export(
+        ep_grad = _export(
             model,
             (torch.tensor(10), torch.tensor(12)),
             {},
@@ -4721,6 +4727,8 @@ def forward(self, x, b_t, y):
         self.assertTrue(torch.allclose(z_new_eager, z_new_export))
         self.assertTrue(torch.allclose(legit_eager, legit_export))
 
+    @testing.expectedFailureSerDer
+    @testing.expectedFailureRetraceability
     def test_custom_op_auto_functionalize_pre_dispatch(self):
         class M(torch.nn.Module):
             def __init__(self):
@@ -4743,7 +4751,7 @@ def forward(self, x):
     return (getitem_3, getitem_3, cos_1)""",
         )
 
-        ep = torch.export._trace._export(M(), inps, pre_dispatch=True)
+        ep = _export(M(), inps, pre_dispatch=True)
         self.assertExpectedInline(
             str(ep.graph_module.code.strip()),
             """\
@@ -4778,7 +4786,7 @@ def forward(self, x):
     return (cos_2,)""",
         )
 
-        ep = torch.export._trace._export(M(), inps, pre_dispatch=True)
+        ep = _export(M(), inps, pre_dispatch=True)
         self.assertExpectedInline(
             str(ep.graph_module.code.strip()),
             """\
@@ -4878,7 +4886,7 @@ def forward(self, x):
                 return y
 
         with torch.no_grad():
-            ep = torch.export._trace._export(
+            ep = _export(
                 Foo(),
                 (torch.randn(4), torch.randn(4), torch.randn(4)),
                 pre_dispatch=True,
@@ -5055,14 +5063,14 @@ def forward(self, x, y):
             r".*dx = .* must be specialized to 10 because the guards generated for it are too complex(.*\n)*"
             r".*dy = .* must be specialized to 72 because the guards generated for it are too complex(.*\n)*",
         ):
-            torch.export._trace._export(
+            _export(
                 Mod4Reshape(),
                 inputs,
                 dynamic_shapes={"x": (dx, dy)},
                 strict=False,
                 _disable_forced_specializations=False,
             )
-        ep = torch.export._trace._export(
+        ep = _export(
             Mod4Reshape(),
             inputs,
             dynamic_shapes={"x": (dx, dy)},
@@ -5100,14 +5108,14 @@ def forward(self, x, y):
             r".*dx0 = .* must be specialized to 6 because the guards generated for it are too complex(.*\n)*"
             r".*dx1 = .* must be specialized to 8 because the guards generated for it are too complex(.*\n)*",
         ):
-            torch.export._trace._export(
+            _export(
                 FreeReshape(),
                 inputs,
                 dynamic_shapes=dynamic_shapes,
                 strict=False,
                 _disable_forced_specializations=False,
             )
-        ep = torch.export._trace._export(
+        ep = _export(
             FreeReshape(),
             inputs,
             dynamic_shapes=dynamic_shapes,
@@ -5151,7 +5159,7 @@ def forward(self, x, y):
             r".*dx0 = 12(.*\n)*"
             r".*dz = dy(.*\n)*",
         ):
-            torch.export._trace._export(
+            _export(
                 Foo(),
                 inputs,
                 dynamic_shapes=dynamic_shapes,
@@ -5164,7 +5172,7 @@ def forward(self, x, y):
             r"Suggested fixes:(.*\n)*"
             r".*dz = dy(.*\n)*",
         ) as msg:
-            torch.export._trace._export(
+            _export(
                 Foo(),
                 inputs,
                 dynamic_shapes=dynamic_shapes,
