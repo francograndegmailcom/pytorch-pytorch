@@ -3,6 +3,7 @@
 
 #ifdef USE_KINETO
 #include <libkineto.h>
+#include <c10/kineto_plugin/register_api.h>
 #endif
 
 #include <c10/util/Exception.h>
@@ -229,6 +230,7 @@ void prepareTrace(
   if (!libkineto::api().isProfilerRegistered()) {
     libkineto_init(/*cpuOnly=*/cpuOnly, /*logOnError=*/true);
     libkineto::api().suppressLogMessages();
+    c10::kineto_plugin::registerKinetoPluginProfiler();
   }
 
   if (!libkineto::api().isProfilerInitialized()) {
