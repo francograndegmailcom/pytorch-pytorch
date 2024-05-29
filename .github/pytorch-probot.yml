@@ -9,6 +9,7 @@ ciflow_push_tags:
 - ciflow/inductor-perf-compare
 - ciflow/inductor-micro-benchmark
 - ciflow/linux-aarch64
+- ciflow/linux-s390x
 - ciflow/mps
 - ciflow/nightly
 - ciflow/periodic
