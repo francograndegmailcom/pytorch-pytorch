@@ -305,7 +305,7 @@ test_inductor_distributed() {
   pytest test/distributed/fsdp/test_fsdp_tp_integration.py -k test_fsdp_tp_integration
 
   # this runs on both single-gpu and multi-gpu instance. It should be smart about skipping tests that aren't supported
-  # with if required # gpus aren't available
+  # with if required # gpus aren't  available
   python test/run_test.py --include distributed/test_dynamo_distributed distributed/test_inductor_collectives --verbose
   assert_git_not_dirty
 }
