@@ -99,11 +99,12 @@ class Experiment:
 
 
 class CompositeMHA(torch.nn.Module):
-    def __init__(self, num_heads, in_proj_weight, in_proj_bias, out_proj):
+    def __init__(self, num_heads, in_proj_weight, in_proj_bias, out_proj_weight, out_proj_bias):
         super().__init__()
         self.in_proj_weight = in_proj_weight
         self.in_proj_bias = in_proj_bias
-        self.out_proj = out_proj
+        self.out_proj_weight = out_proj_weight
+        self.out_proj_bias = out_proj_bias
         self.num_heads = num_heads
 
     def forward(self, query, key, value, mask):
@@ -139,8 +140,9 @@ class CompositeMHA(torch.nn.Module):
         )
 
         attn = attn.transpose(1, 2).reshape(batch_size, -1, self.num_heads * head_dim)
+        attn = torch.nn.functional.linear(attn, self.out_proj_weight, self.out_proj_bias)
         # Match return signature of nn.MHA
-        return self.out_proj(attn), None
+        return attn, None
 
 
 def build_composite_mha_from_nn_mha(pt):
@@ -148,7 +150,7 @@ def build_composite_mha_from_nn_mha(pt):
     in_proj_weight = pt.in_proj_weight
     assert in_proj_weight is not None
     assert pt.batch_first
-    return CompositeMHA(pt.num_heads, pt.in_proj_weight, pt.in_proj_bias, pt.out_proj)
+    return CompositeMHA(pt.num_heads, pt.in_proj_weight, pt.in_proj_bias, pt.out_proj_weight, pt.out_proj_bias)
 
 
 def generate_rand_batch(
