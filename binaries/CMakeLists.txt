@@ -26,7 +26,8 @@ endif()
 
 if(USE_CUDA)
   caffe2_binary_target("inspect_gpu.cc")
-  target_link_libraries(inspect_gpu ${CUDA_LIBRARIES})
+  include(${Torch_SOURCE_DIR}/cmake/LinkCudaLibraries.cmake)
+  link_cuda_libraries(inspect_gpu ${CUDA_LIBRARIES})
 
 endif()
 
