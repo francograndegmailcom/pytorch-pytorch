@@ -34,6 +34,13 @@ jobs:
       id-token: write
       contents: read
 
+  get-label-type:
+    name: get-label-type
+    uses: ./.github/workflows/_runner-determinator.yml
+    with:
+      user_name: ${{ github.actor }}
+      curr_branch: ${{ github.head_ref || github.ref_name }}
+
   linux-focal-cuda12_4-py3_10-gcc9-sm86-build:
     name: linux-focal-cuda12.4-py3.10-gcc9-sm86
     uses: ./.github/workflows/_linux-build-label.yml
@@ -170,15 +177,17 @@ jobs:
   win-vs2019-cpu-py3-build:
     name: win-vs2019-cpu-py3
     uses: ./.github/workflows/_win-build.yml
+    needs: get-label-type
     with:
+      runner: "${{ needs.get-label-type.outputs.label-type }}windows.4xlarge.nonephemeral"
       build-environment: win-vs2019-cpu-py3
       cuda-version: cpu
       sync-tag: win-cpu-build
       test-matrix: |
         { include: [
-          { config: "default", shard: 1, num_shards: 3, runner: "windows.4xlarge.nonephemeral" },
-          { config: "default", shard: 2, num_shards: 3, runner: "windows.4xlarge.nonephemeral" },
-          { config: "default", shard: 3, num_shards: 3, runner: "windows.4xlarge.nonephemeral" },
+          { config: "default", shard: 1, num_shards: 3, runner: "${{ needs.get-label-type.outputs.label-type }}windows.4xlarge.nonephemeral" },
+          { config: "default", shard: 2, num_shards: 3, runner: "${{ needs.get-label-type.outputs.label-type }}windows.4xlarge.nonephemeral" },
+          { config: "default", shard: 3, num_shards: 3, runner: "${{ needs.get-label-type.outputs.label-type }}windows.4xlarge.nonephemeral" },
         ]}
 
   win-vs2019-cpu-py3-test:
@@ -213,7 +222,9 @@ jobs:
   linux-focal-rocm6_1-py3_8-build:
     name: linux-focal-rocm6.1-py3.8
     uses: ./.github/workflows/_linux-build-label.yml
+    needs: get-label-type
     with:
+      runner: "${{ needs.get-label-type.outputs.label-type }}linux.2xlarge"
       build-environment: linux-focal-rocm6.1-py3.8
       docker-image-name: pytorch-linux-focal-rocm-n-py3
       sync-tag: rocm-build
