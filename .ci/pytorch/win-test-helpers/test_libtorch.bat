@@ -9,6 +9,7 @@ set PATH=C:\Program Files\NVIDIA Corporation\NvToolsExt\bin\x64;%TMP_DIR_WIN%\bu
 
 set TORCH_CPP_TEST_MNIST_PATH=%CWD%\test\cpp\api\mnist
 python tools\download_mnist.py --quiet -d %TORCH_CPP_TEST_MNIST_PATH%
+pip show torch
 
 python test\run_test.py --cpp --verbose -i cpp/test_api
 if errorlevel 1 exit /b 1
@@ -36,7 +37,7 @@ if "%~1" == "c10_intrusive_ptr_benchmark" (
   call "%~2"
   goto :eof
 )
-
+pip show torch
 python test\run_test.py --cpp --verbose -i "cpp/%~1"
 if errorlevel 1 (
   echo %1 failed with exit code %errorlevel%
