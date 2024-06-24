@@ -41,6 +41,7 @@ struct TORCH_API PrivateUse1HooksInterface : AcceleratorHooksInterface {
         false,
         "You should register `PrivateUse1HooksInterface` for PrivateUse1 before call `resizePrivateUse1Bytes`.");
   }
+
 };
 
 struct TORCH_API PrivateUse1HooksArgs {};
