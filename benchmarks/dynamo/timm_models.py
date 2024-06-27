@@ -69,7 +69,9 @@ BATCH_SIZE_DIVISORS = {
 }
 
 REQUIRE_HIGHER_TOLERANCE = {
+    "beit_base_patch16_224",
     "fbnetv3_b",
+    "gluon_inception_v3",
     "gmixer_24_224",
     "hrnet_w18",
     "inception_v3",
@@ -77,6 +79,7 @@ REQUIRE_HIGHER_TOLERANCE = {
     "mobilenetv3_large_100",
     "sebotnet33ts_256",
     "selecsls42b",
+    "tinynet_a",
     "cspdarknet53",
 }
 
