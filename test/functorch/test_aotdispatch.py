@@ -3800,7 +3800,7 @@ def forward(self, tangents_1):
         class M(torch.nn.Module):
             def __init__(self):
                 super().__init__()
-                self.register_buffer("buffer", torch.ones(4, 5))
+                self.buffer = torch.nn.Buffer(torch.ones(4, 5))
 
             def forward(self, x):
                 y = self.buffer.add_(3)
@@ -4720,7 +4720,7 @@ class <lambda>(torch.nn.Module):
         class M(torch.nn.Module):
             def __init__(self):
                 super().__init__()
-                self.register_buffer("buffer1", torch.ones(6, 4))
+                self.buffer1 = torch.nn.Buffer(torch.ones(6, 4))
 
             def forward(self, x):
                 x.add_(4)
@@ -4746,7 +4746,7 @@ def forward(self, arg0_1, arg1_1):
         class M(torch.nn.Module):
             def __init__(self):
                 super().__init__()
-                self.register_buffer("buffer1", torch.ones(6, 4))
+                self.buffer1 = torch.nn.Buffer(torch.ones(6, 4))
 
             def forward(self, x, y):
                 y.add_(4)
