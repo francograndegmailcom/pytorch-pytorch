@@ -403,6 +403,8 @@ inductor_override_kwargs = {
     ("index_reduce.amax", "cuda", f32): {"check_gradient": False},
     ("index_reduce.amax", "cuda", f16): {"check_gradient": False},
     ("tanh", "cuda", f16): {"atol": 1e-4, "rtol": 1e-2},
+    ("argsort", "cpu"): {"is_sort": True},
+    ("sort", "cpu"): {"is_sort": True},
 }
 
 
@@ -648,6 +650,7 @@ class TestInductorOpInfo(TestCase):
                                 "output_process_fn_grad": sample_input.output_process_fn_grad,
                                 "atol": atol,
                                 "rtol": rtol,
+                                "is_sort": False,
                             }
                             adjusted_kwargs.update(overridden_kwargs)
                             adjusted_kwargs.update(kwarg_overrides)

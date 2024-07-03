@@ -363,12 +363,14 @@ def check_model(
     assert_equal=True,
     check_gradient=False,
     check_has_compiled=True,
+    is_sort=False,
     output_process_fn_grad=lambda x: x,
 ):
     kwargs = kwargs or {}
     torch._dynamo.reset()
 
     ref_inputs = [clone_preserve_strides(x) for x in example_inputs]
+    
     ref_kwargs = kwargs
     has_lowp_args = False
 
@@ -464,8 +466,47 @@ def check_model(
     if reference_in_float:
         correct_flat = reference_to_expect(actual_flat, correct_flat)
         correct = tree_unflatten(correct_flat, correct_spec)
-
-    if assert_equal:
+    
+    if is_sort:
+        # Check if it is sort or argsort
+        if (type(actual).__name__ == "sort"):
+            self.assertEqual(
+                actual.values,
+                correct.values,
+                atol=atol,
+                rtol=rtol,
+                equal_nan=True,
+                exact_dtype=exact_dtype,
+            )
+        
+            self.assertEqual(
+                ref_inputs[0][actual.indices],
+                ref_inputs[0][correct.indices],
+                atol=atol,
+                rtol=rtol,
+                equal_nan=True,
+                exact_dtype=exact_dtype,
+            )
+        else:
+            self.assertEqual(
+                ref_inputs[0][actual],
+                ref_inputs[0][correct],
+                atol=atol,
+                rtol=rtol,
+                equal_nan=True,
+                exact_dtype=exact_dtype,
+            )
+        # In case of input mutations, check that inputs are the same
+        self.assertEqual(
+            ref_inputs,
+            example_inputs,
+            atol=atol,
+            rtol=rtol,
+            equal_nan=True,
+            # our testing sometimes uses higher precision inputs for the reference
+            exact_dtype=False,
+        )
+    elif assert_equal:
         self.assertEqual(
             actual,
             correct,
