@@ -1782,7 +1782,7 @@ class AotCodeCompiler:
                 else os.path.splitext(input_path)[0] + ".so"
             )
 
-            output_o = os.path.splitext(input_path)[0] + ".o"
+            # output_o = os.path.splitext(input_path)[0] + ".o"
             consts_size = sum(
                 torch.ops.mkldnn._nbytes(tensor)
                 if tensor.is_mkldnn
@@ -1794,6 +1794,8 @@ class AotCodeCompiler:
             use_mmap_weights = not config.is_fbcode() and consts_size > 2_000_000_000
             if config.aot_inductor.force_mmap_weights:
                 use_mmap_weights = True
+
+            """
             compile_cmd = cpp_compile_command(
                 input=input_path,
                 output=output_o,
@@ -1804,6 +1806,26 @@ class AotCodeCompiler:
                 use_absolute_path=use_absolute_path,
                 use_mmap_weights=use_mmap_weights,
             )
+            """
+            (
+                object_output_name,
+                object_output_dir,
+            ) = get_name_and_dir_from_output_file_path(input_path)
+            object_builder = CppBuilder(
+                name=object_output_name,
+                sources=input_path,
+                output_dir=object_output_dir,
+                BuildOption=CppTorchCudaOptions(
+                    vec_isa=picked_vec_isa,
+                    cuda=cuda,
+                    aot_mode=graph.aot_mode,
+                    compile_only=True,
+                    use_absolute_path=use_absolute_path,
+                    use_mmap_weights=use_mmap_weights,
+                ),
+            )
+            compile_cmd = object_builder.get_command_line()
+            output_o = object_builder.get_target_file_path()
             log.debug("aot compilation command: %s", compile_cmd)
             if fbcode_aot_cpu_re:
                 compile_file(input_path, output_o, compile_cmd.split())
@@ -1863,6 +1885,7 @@ class AotCodeCompiler:
                 "linux": _compile_consts_linux,
                 "darwin": _compile_consts_darwin,
             }[sys.platform](aot_constants)
+            """
             link_cmd = cpp_compile_command(
                 input=[output_o, consts_o],
                 output=output_so,
@@ -1871,6 +1894,21 @@ class AotCodeCompiler:
                 aot_mode=graph.aot_mode,
                 use_absolute_path=use_absolute_path,
             )
+            """
+            output_name, output_dir = get_name_and_dir_from_output_file_path(output_so)
+            so_builder = CppBuilder(
+                name=output_name,
+                sources=[output_o, consts_o],
+                output_dir=output_dir,
+                BuildOption=CppTorchCudaOptions(
+                    vec_isa=picked_vec_isa,
+                    cuda=cuda,
+                    aot_mode=graph.aot_mode,
+                    use_absolute_path=use_absolute_path,
+                ),
+            )
+            link_cmd = so_builder.get_command_line()
+            output_so = so_builder.get_target_file_path()
             log.debug("aot linkage command: %s", link_cmd)
             if fbcode_aot_cpu_re:
                 compile_file([output_o, consts_o], output_so, link_cmd.split())
@@ -2075,10 +2113,18 @@ class CppCodeCache:
             from filelock import FileLock
 
             lock_path = os.path.join(get_lock_dir(), key + ".lock")
+            output_name, output_dir = get_name_and_dir_from_output_file_path(input_path)
+
+            """
+            TODO: remove output_path hard code path, after optimize circle import issue.
+            _worker_compile_cpp will use 'CppBuilder' as arg, and CppBuilder can calc output
+            path according Windows/Linux OS.
+            """
             output_path = input_path[:-3] + "so"
             future: Optional[Future[Any]] = None
             lib = None
-            worker_fn = functools.partial(
+            """
+             worker_fn = functools.partial(
                 _worker_compile_cpp,
                 lock_path,
                 input_path,
@@ -2086,6 +2132,15 @@ class CppCodeCache:
                 cpp_compile_command(
                     input=input_path, output=output_path, **compile_command
                 ),
+            )
+            """
+            worker_fn = functools.partial(
+                _worker_compile_cpp_new,
+                lock_path,
+                output_name,
+                input_path,
+                output_dir,
+                compile_command,
             )
 
             def load_fn():
@@ -2111,6 +2166,30 @@ class CppCodeCache:
     @classmethod
     def load(cls, source_code: str, cuda: bool = False):
         return cls.load_async(source_code, cuda)()
+
+
+def _worker_compile_cpp_new(lock_path, name, source, output_dir, args: dict[str, Any]):
+    from filelock import FileLock
+
+    from torch._inductor.cpp_builder import CppBuilder, CppTorchCudaOptions
+
+    cpp_build_option = CppTorchCudaOptions(**args)
+    cpp_builder = CppBuilder(
+        name=name,
+        sources=source,
+        output_dir=output_dir,
+        BuildOption=cpp_build_option,
+    )
+
+    with FileLock(lock_path, timeout=LOCK_TIMEOUT):
+        if not os.path.exists(cpp_builder.get_target_file_path()):
+            # compile_file(input_path, output_path, shlex.split(cmd))
+            cpp_builder.build()
+
+
+"""
+TODO: remove the below code, after new cpp_builder stable.
+"""
 
 
 def _worker_compile_cpp(lock_path, input_path, output_path, cmd):
