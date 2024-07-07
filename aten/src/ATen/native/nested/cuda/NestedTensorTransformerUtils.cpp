@@ -1,7 +1,6 @@
 #include <ATen/ATen.h>
 #include <ATen/NestedTensorImpl.h>
 #include <ATen/native/nested/NestedTensorTransformerUtils.h>
-#include <iostream>
 #include <tuple>
 namespace at {
 namespace native {
@@ -15,7 +14,7 @@ namespace {
  * on device. And all we need on CPU to launch the kernel is NNz. We could refactor the
  * the below function but it adds more complexity than I think is needed.
  */
-int64_t get_nnz(Tensor nestedtensor) {
+int64_t get_nnz(const Tensor& nestedtensor) {
   auto* nt_impl = get_nested_tensor_impl(nestedtensor);
   const auto& sizes = nt_impl->get_nested_sizes();
   auto size_tensor_stride = sizes.stride(0);
@@ -39,7 +38,7 @@ int64_t get_nnz(Tensor nestedtensor) {
    * @return A tuple of cumulative sequence lengths and the maximum sequence
    * length, and the last element in the cumulative_sequence_lengths
    */
-  std::tuple<Tensor, int64_t, int64_t> cumulative_and_max_seq_len_nnz(Tensor qkv) {
+  std::tuple<Tensor, int64_t, int64_t> cumulative_and_max_seq_len_nnz(const Tensor& qkv) {
     TORCH_CHECK(
         qkv.is_nested(),
         "QKV must be nested for flash cumulative_seq_len calculation.")
@@ -60,7 +59,7 @@ int64_t get_nnz(Tensor nestedtensor) {
     for (const auto i : c10::irange(batch_size)) {
       // Calculate the cumulative sum of the sequence lengths
       auto current_seq_len = sizes_ptr[(i * size_tensor_stride)];
-      sum += current_seq_len;
+      sum += static_cast<int32_t>(current_seq_len);
       cumulative_seqlen_ptr[i + 1] = sum;
 
       // Find the max element while we traverse
@@ -412,24 +411,11 @@ sdpa_nested_preprocessing(
   Tensor k_t = key.transpose(1, 2);
   Tensor v_t = value.transpose(1, 2);
 
-  auto cumulative_and_max_q_and_nnz_q = cumulative_and_max_seq_len_nnz(q_t);
-  auto cumulative_and_max_kv_and_nnz_kv = cumulative_and_max_seq_len_nnz(k_t);
+  auto [cumulative_sequence_length_q, max_seqlen_batch_q, Nnz_q] = cumulative_and_max_seq_len_nnz(q_t);
+  auto [cumulative_sequence_length_kv, max_seqlen_batch_kv, Nnz_kv]= cumulative_and_max_seq_len_nnz(k_t);
 
   // [TODO] K and V have to have the same Nnz, should probably torch_check
   // assume in order to not iterate over v
-
-  Tensor cumulative_sequence_length_q =
-      std::get<0>(cumulative_and_max_q_and_nnz_q);
-  Tensor cumulative_sequence_length_kv =
-      std::get<0>(cumulative_and_max_kv_and_nnz_kv);
-
-  const int64_t max_seqlen_batch_q =
-      std::get<1>(cumulative_and_max_q_and_nnz_q);
-  const int64_t max_seqlen_batch_kv =
-      std::get<1>(cumulative_and_max_kv_and_nnz_kv);
-
-  const int64_t Nnz_q = std::get<2>(cumulative_and_max_q_and_nnz_q);
-  const int64_t Nnz_kv = std::get<2>(cumulative_and_max_kv_and_nnz_kv);
 
   Tensor query_buffer_reshaped;
   Tensor key_buffer_reshaped;
