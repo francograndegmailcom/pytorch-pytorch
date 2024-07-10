@@ -19,7 +19,7 @@
 #if !defined(USE_ROCM) && \
     ((NCCL_MAJOR > 2) || ((NCCL_MAJOR == 2) && (NCCL_MINOR >= 13)))
 #define NCCL_HAS_REMOTE_ERROR 1
-#if NCCL_MINOR >= 14
+#if (NCCL_MAJOR > 2) || (NCCL_MINOR >= 14)
 #define NCCL_HAS_COMM_NONBLOCKING 1
 #endif
 #endif
