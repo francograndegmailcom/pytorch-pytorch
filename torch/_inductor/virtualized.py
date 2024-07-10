@@ -162,7 +162,8 @@ _debug: Virtualized[DebugContext] = Virtualized("debug", NullHandler)
 _interpreter: Virtualized[InterpreterShim] = Virtualized("interpreter", NullHandler)
 _aot_compilation: Virtualized[bool] = Virtualized("aot_compilation", NullHandler)
 _current_node: Virtualized[torch.fx.Node] = Virtualized("current_node", NullHandler)
-
+_is_inference: Virtualized[bool] = Virtualized("is_inference", NullHandler)
+_is_backward: Virtualized[bool] = Virtualized("is_backward", NullHandler)
 
 class OpsValue:
     """The return type of most ops calls.
@@ -306,6 +307,10 @@ class _V:
     get_aot_compilation: Callable[[], Any] = _aot_compilation._get_handler
     set_current_node: Callable[[Any], Any] = _current_node._set_handler
     get_current_node: Callable[[], Any] = _current_node._get_handler
+    set_is_inference: Callable[[bool], Any] = _is_inference._set_handler
+    get_is_inference: Callable[[], Any] = _is_inference._get_handler
+    set_is_backward: Callable[[bool], Any] = _is_backward._set_handler
+    get_is_backward: Callable[[], Any] = _is_backward._get_handler
 
     @property
     def ops(self) -> OpsHandler[Any]:
@@ -347,6 +352,14 @@ class _V:
     @property
     def current_node(self):
         return _current_node._get_handler()
+
+    @property
+    def is_inference(self):
+        return _is_inference._get_handler()
+
+    @property
+    def is_backward(self):
+        return _is_backward._get_handler()
 
 
 V = _V()
