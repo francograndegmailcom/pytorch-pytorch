@@ -584,6 +584,12 @@ decompose_mem_bound_mm: bool = False
 assume_aligned_inputs: bool = False
 
 
+# Adds NVTX annotations aroung training phases
+annotate_training: bool = os.environ.get("TORCHINDUCTOR_ANNOTATE_TRAINING", "0") == "1"
+# Adds NVTX annotations aroung each buffer computation
+annotate_buffers: bool = os.environ.get("TORCHINDUCTOR_ANNOTATE_BUFFERS", "0") == "1"
+
+
 # config specific to codegen/cpp.py
 class cpp:
     # set to torch.get_num_threads()
