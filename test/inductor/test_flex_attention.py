@@ -47,13 +47,23 @@ torch.set_float32_matmul_precision("high")
 index = torch.ops.aten.index
 
 
-def create_attention(score_mod, block_mask):
-    return functools.partial(flex_attention, score_mod=score_mod, block_mask=block_mask)
+def create_attention(score_mod, block_mask, enable_gqa=False):
+    return functools.partial(
+        flex_attention,
+        score_mod=score_mod,
+        block_mask=block_mask,
+        enable_gqa=enable_gqa,
+    )
 
 
 def create_block_mask_test(score_mod, query, key):
     block_mask = create_block_mask(
-        score_mod, 1, 1, query.shape[-2], key.shape[-2], query.device
+        score_mod,
+        None,
+        None,
+        query.shape[-2],
+        key.shape[-2],
+        query.device,
     )
     return block_mask
 
@@ -225,7 +235,9 @@ class TestFlexAttention(InductorTestCase):
         q_ref, k_ref, v_ref = query_key_value_clones(q, k, v)
         q_gold, k_gold, v_gold = query_key_value_clones(q, k, v, torch.float64)
         block_mask = create_block_mask_test(score_mod, q, k)
-        sdpa_partial = create_attention(score_mod, block_mask)
+        sdpa_partial = create_attention(
+            score_mod, block_mask, enable_gqa=(not Q_H == KV_H)
+        )
         compiled_sdpa = torch.compile(sdpa_partial)
         golden_out = sdpa_partial(q_gold, k_gold, v_gold)
         ref_out = sdpa_partial(q_ref, k_ref, v_ref)
@@ -440,6 +452,23 @@ class TestFlexAttention(InductorTestCase):
             B,
             H,
             S // 2,  # Seqlen of Q is different from seqlen of K/V
+            D,
+            B,
+            H,
+            S,
+            D,
+        )
+
+    @supported_platform
+    @common_utils.parametrize("dtype", test_dtypes_fast)
+    @common_utils.parametrize("score_mod", test_score_mods)
+    def test_GQA(self, dtype: torch.dtype, score_mod: Callable):
+        self.run_test(
+            score_mod,
+            dtype,
+            B,
+            H * 4,  # Hq = 4*Hkv.
+            S // 8,
             D,
             B,
             H,
@@ -924,8 +953,8 @@ def forward(self, arg0_1, arg1_1, arg2_1, arg3_1, arg4_1):
         _, code = run_and_get_code(f, q, k, v)
         # TODO: attention output is not being DCE'd
         fc = FileCheck()
-        fc.check("buf0 = empty_strided_cuda((1, 1, 1)")  # SPARSE_KV_NUM_BLKS
-        fc.check("buf1 = empty_strided_cuda((1, 1, 1, 1)")  # SPARSE_KV_IDX
+        fc.check("buf0 = empty_strided_cuda((1, 1, 8)")  # SPARSE_KV_NUM_BLKS
+        fc.check("buf1 = empty_strided_cuda((1, 1, 8, 8)")  # SPARSE_KV_IDX
         fc.check("buf4 = empty_strided_cuda")  # logsumexp
         fc.check("buf5 = empty_strided_cuda")  # attention output
         fc.check("buf7 = empty_strided_cuda")  # cos(attention)
@@ -1217,7 +1246,7 @@ def forward(self, arg0_1, arg1_1, arg2_1, arg3_1, arg4_1):
         def causal(score, b, h, q, kv):
             return torch.where(q >= kv, score, -float("inf"))
 
-        block_mask = create_block_mask(causal, 1, 1, 2048, 2048)
+        block_mask = create_block_mask(causal, None, None, 2048, 2048)
 
         def replace_non_printable(s):
             def replace(c):
@@ -1281,13 +1310,29 @@ class GraphModule(torch.nn.Module):
         l_args_1_ = L_args_1_
         l_args_2_ = L_args_2_
 
-        ones: "i32[1, 1, 1]" = torch.ones([1, 1, 1], dtype = torch.int32, device = device(type='cuda', index=0))
+        q_range: "i32[1]" = torch.arange(1, dtype = torch.int32, device = device(type='cuda', index=0))
 
-        zeros: "i32[1, 1, 1, 1]" = torch.zeros([1, 1, 1, 1], dtype = torch.int32, device = device(type='cuda', index=0))
+        kv_range: "i32[1]" = torch.arange(1, dtype = torch.int32, device = device(type='cuda', index=0))
 
-        ones_1: "i32[1, 1, 1]" = torch.ones([1, 1, 1], dtype = torch.int32, device = device(type='cuda', index=0))
+        full: "i32[1, 1, 1]" = torch.full([1, 1, 1], 1, dtype = torch.int32, device = device(type='cuda', index=0))
 
-        zeros_1: "i32[1, 1, 1, 1]" = torch.zeros([1, 1, 1, 1], dtype = torch.int32, device = device(type='cuda', index=0))
+        contiguous: "i32[1, 1, 1]" = full.contiguous();  full = None
+
+        getitem: "i32[1, 1, 1, 1]" = kv_range[(None, None, None, slice(None, None, None))];  kv_range = None
+
+        broadcast_to: "i32[1, 1, 1, 1]" = torch.broadcast_to(getitem, [1, 1, 1, 1]);  getitem = None
+
+        contiguous_1: "i32[1, 1, 1, 1]" = broadcast_to.contiguous();  broadcast_to = None
+
+        full_1: "i32[1, 1, 1]" = torch.full([1, 1, 1], 1, dtype = torch.int32, device = device(type='cuda', index=0))
+
+        contiguous_2: "i32[1, 1, 1]" = full_1.contiguous();  full_1 = None
+
+        getitem_1: "i32[1, 1, 1, 1]" = q_range[(None, None, None, slice(None, None, None))];  q_range = None
+
+        broadcast_to_1: "i32[1, 1, 1, 1]" = torch.broadcast_to(getitem_1, [1, 1, 1, 1]);  getitem_1 = None
+
+        contiguous_3: "i32[1, 1, 1, 1]" = broadcast_to_1.contiguous();  broadcast_to_1 = None
 
         new_empty: "f64[]" = l_args_0_.new_empty([], requires_grad = True)
         new_empty_1: "i32[]" = l_args_0_.new_empty([], dtype = torch.int32)
@@ -1295,7 +1340,7 @@ class GraphModule(torch.nn.Module):
         new_empty_3: "i32[]" = l_args_0_.new_empty([], dtype = torch.int32)
         new_empty_4: "i32[]" = l_args_0_.new_empty([], dtype = torch.int32)
         flex_attention_0 = self.flex_attention_0
-        flex_attention = torch.ops.higher_order.flex_attention(l_args_0_, l_args_1_, l_args_2_, flex_attention_0, (ones, zeros, ones_1, zeros_1, 8, 8));  l_args_0_ = l_args_1_ = l_args_2_ = flex_attention_0 = ones = zeros = ones_1 = zeros_1 = None
+        flex_attention = torch.ops.higher_order.flex_attention(l_args_0_, l_args_1_, l_args_2_, flex_attention_0, (contiguous, contiguous_1, contiguous_2, contiguous_3, 128, 128));  l_args_0_ = l_args_1_ = l_args_2_ = flex_attention_0 = contiguous = contiguous_1 = contiguous_2 = contiguous_3 = None
         out: "f64[2, 2, 8, 4]" = flex_attention[0];  flex_attention = None
         return (out,)
 
@@ -1329,7 +1374,7 @@ class GraphModule(torch.nn.Module):
     def forward(self, primals_1: "f64[2, 2, 8, 4]", primals_2: "f64[2, 2, 8, 4]", primals_3: "f64[2, 2, 8, 4]", full_default: "i32[1, 1, 1]", full_default_1: "i32[1, 1, 1, 1]", getitem: "f64[2, 2, 8, 4]", getitem_1: "f32[2, 2, 8]", tangents_1: "f64[2, 2, 8, 4]"):
         fw_graph = self.fw_graph
         joint_graph = self.joint_graph
-        flex_attention_backward = torch.ops.higher_order.flex_attention_backward(primals_1, primals_2, primals_3, getitem, getitem_1, tangents_1, fw_graph, joint_graph, (full_default, full_default_1, full_default, full_default_1, 8, 8));  primals_1 = primals_2 = primals_3 = getitem = getitem_1 = tangents_1 = fw_graph = joint_graph = full_default = full_default_1 = None
+        flex_attention_backward = torch.ops.higher_order.flex_attention_backward(primals_1, primals_2, primals_3, getitem, getitem_1, tangents_1, fw_graph, joint_graph, (full_default, full_default_1, full_default, full_default_1, 128, 128));  primals_1 = primals_2 = primals_3 = getitem = getitem_1 = tangents_1 = fw_graph = joint_graph = full_default = full_default_1 = None
         getitem_2: "f64[2, 2, 8, 4]" = flex_attention_backward[0]
         getitem_3: "f64[2, 2, 8, 4]" = flex_attention_backward[1]
         getitem_4: "f64[2, 2, 8, 4]" = flex_attention_backward[2];  flex_attention_backward = None
