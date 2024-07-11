@@ -1020,18 +1020,23 @@ class BuiltinVariable(VariableTracker):
     def call_str(self, tx, arg):
         # Handle `str` on a user defined function or object
         print("On Call Function")
-        if isinstance(arg, (variables.UserFunctionVariable)):
-            return variables.ConstantVariable.create(value=str(arg.fn))
-        elif isinstance(arg, (variables.UserDefinedObjectVariable)) and hasattr(arg, 'value'):
-            print("Attempting to call str on UserDefinedObjectVariable")
-            return variables.ConstantVariable.create(value=str(arg.value))
-        elif isinstance(arg, (variables.UserDefinedObjectVariable)) and not hasattr(arg, 'value'):
+        def debug_ci_checks(arg):
             print("Checking edge case in CI for test_ParameterList_meta")
             print(arg)
             print("dir(arg)")
             print(dir(arg))
             print("arg.__dict__")
             print(arg.__dict__)
+
+        if isinstance(arg, (variables.UserFunctionVariable)):
+            return variables.ConstantVariable.create(value=str(arg.fn))
+        elif isinstance(arg, (variables.UserDefinedObjectVariable)) and hasattr(arg, 'value'):
+            print("Attempting to call str on UserDefinedObjectVariable")
+            return variables.ConstantVariable.create(value=str(arg.value))
+        elif isinstance(arg, (variables.UserDefinedObjectVariable)) and not hasattr(arg, 'value'):
+            debug_ci_checks(arg)
+        elif isinstance(arg, (variables.UserDefinedObjectVariable)) and not hasattr(arg, '_size'):
+            debug_ci_checks(arg)
 
     def _call_min_max(self, tx, *args):
         if len(args) == 1 and args[0].has_unpack_var_sequence(tx):
