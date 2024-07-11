@@ -165,7 +165,7 @@ static bool can_use_xss_sort(const TensorBase& values, const TensorBase& indices
   if (stable) return false;
 
   auto type = values.scalar_type();
-  if (not (type == ScalarType::Long || type == ScalarType::Int || type == ScalarType::Double || type == ScalarType::Float)) return false;
+  if (! (type == ScalarType::Long || type == ScalarType::Int || type == ScalarType::Double || type == ScalarType::Float)) return false;
 
   return true;
 }
