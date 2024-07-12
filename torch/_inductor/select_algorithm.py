@@ -1125,218 +1125,219 @@ class AlgorithmSelectorCache(PersistentCache):
         # arg, the function will be called instead of
         # generating a random torch.Tensor for benchmarking.
         input_gen_fns: Optional[Dict[int, Callable[[ir.Buffer], torch.Tensor]]] = None,
-        precompilation_timeout_seconds: int = 60 * 60,
         return_multi_template=False,
     ):
-        from .codegen.cuda.cuda_kernel import CUDATemplateCaller
+        if len(choices) == 0:
+            raise NoValidChoicesError(
+                "No choices to select, please consider adding ATEN into max_autotune_gemm_backends "
+                "config (defined in torch/_inductor/config.py) to allow at least one choice. "
+            )
+        elif len(choices) == 1:
+            from .codegen.cuda.cuda_kernel import CUDATemplateCaller
+            if not isinstance(choices[0], CUDATemplateCaller):
+                # CUDATemplateCaller still needs to go through autotuning process to retrieve workspace size
+                return choices[0].output_node()
+
+        inputs_key = repr([self.key_of(x) for x in input_nodes])
+
+        precompile = functools.partial(self.precompile, name, inputs_key)
 
         # Templates selected with input_gen_fns require specific input data to avoid IMA
         # Passing custom input gen fns to benchmark_fusion NYI, so skip deferred template selection
         # TODO(jgong5): support multi-template on CPU
         if input_gen_fns is not None or layout.device.type == "cpu":
             return_multi_template = False
+        
+        log.debug("Selecting best of %s choices from cached autotunings.", str(len(choices)))
+
+        cached_choice_to_timing = self.lookup(
+            choices,
+            name,
+            inputs_key,
+            None,
+        )
+
+        if cached_choice_to_timing == {}:
+            log.debug("One or more autotunings missing in cache, proceeding to autotuning.")
+        else:
+            if return_multi_template:
+                wait_on_precompile = precompile(choices)
+
+                def wait_and_return():
+                    wait_on_precompile()
+                    return choice_to_timing
+
+                return torch._inductor.ir.TensorBox.create(
+                    torch._inductor.ir.MultiTemplateBuffer(
+                        layout,
+                        input_nodes,
+                        wait_and_return,
+                    )
+                )
+            else:
+                selected_choice = min(cached_choice_to_timing, key=cached_choice_to_timing.__getitem__)
+
+                log.debug("Selected choice %s from cached autotunings.", selected_choice)
+
+                wait_on_precompile = precompile([selected_choice])
+                wait_on_precompile()
+
+                return selected_choice.output_node()
+
+        log.debug("Autotuning selecting from %s choices.", str(len(choices)))
 
         # TODO - assert that we have not mutating kernels here
-
-        # TODO(nmacchioni): remove once CI tests are fixed
-        choices = [choice for choice in choices if choice is not None]
 
         if mm_file_name := get_mm_log_filename():
             M, K = input_nodes[-2].get_size()[:2]
             N = input_nodes[-1].get_size()[-1]
             append_to_log(mm_file_name, {"invoke": str((M, K, N))})
-
-        if len(choices) == 0:
-            raise NoValidChoicesError(
-                "No choices to select, please consider adding ATEN into max_autotune_gemm_backends "
-                "config (defined in torch/_inductor/config.py) to allow at least one choice. "
-            )
-        log.debug("Max autotune selects from %s choices.", str(len(choices)))
-
-        if len(choices) == 1:
-            if not isinstance(choices[0], CUDATemplateCaller):
-                # CUDATemplateCaller still needs to go through autotuning process to retrieve workspace size.
-                return choices[0].output_node()
-
-        @functools.lru_cache(None)
-        def make_benchmark_fn():
-            return self.make_benchmark_fn(choices, input_nodes, layout, input_gen_fns)
-
-        inputs_key = repr([self.key_of(x) for x in input_nodes])
-
-        def precompile(choices) -> Callable[[], None]:
-            def no_op(*args, **kwargs):
-                return
-
-            if (
-                precompilation_timeout_seconds is None
-                or precompilation_timeout_seconds <= 0
-            ):
-                return no_op
-
-            env_workers = get_env_num_workers()
-            num_workers = env_workers if env_workers is not None else (len(choices))
-
-            if num_workers <= 0:
-                return no_op
-
-            # https://github.com/python/cpython/issues/106905
-            if (
-                sys.version_info.major == 3
-                and sys.version_info.minor == 11
-                and sys.version_info.micro <= 8
-            ):
-                return no_op
-
-            # check local and global cache before precompiling
-            timings = self.lookup(
-                choices,
-                name,
-                inputs_key,
-                benchmark=None,
-            )
-
-            if timings:
-                return no_op
-
-            if config.search_autotune_cache and not (
-                config.max_autotune or config.max_autotune_gemm
-            ):
-                return no_op
-
-            precompile_key = (
-                f"{name}: {inputs_key} : {torch.get_float32_matmul_precision()}"
-            )
-            if precompile_func := self.precompile_cache.get(precompile_key):
-                return precompile_func
-
-            log.info(
-                "Multithreaded precompilation for %d choices using %d worker threads",
-                len(choices),
-                num_workers,
-            )
-
-            # In rare circumstances, because python threads inherit global state,
-            # thread pool executor can race and leave stdout/stderr in a state
-            # different than the original values. we explicitly restore the state
-            # here to avoid this issue.
-
-            initial_stdout = sys.stdout
-            initial_stderr = sys.stderr
-
-            def precompile_with_captured_stdout(choice):
-                with restore_stdout_stderr(initial_stdout, initial_stderr):
-                    return choice.precompile()
-
-            executor = ThreadPoolExecutor(max_workers=num_workers)
-
-            futures = {}
-            for c in choices:
-                if hasattr(c, "precompile"):
-                    future = executor.submit(precompile_with_captured_stdout, c)
-                    futures[future] = c
-
-            @functools.lru_cache(None)
-            @restore_stdout_stderr(initial_stdout, initial_stderr)
-            def wait_on_futures():
-                counters["inductor"]["select_algorithm_precompile"] += 1
-                for future in as_completed(
-                    futures,
-                    timeout=precompilation_timeout_seconds,
-                ):
-                    if e := future.exception():
-                        log.error(
-                            "Exception %s for benchmark choice %s", e, futures[future]
-                        )
-
-                executor.shutdown(wait=True)
-
-            self.precompile_cache[precompile_key] = wait_on_futures
-
-            return wait_on_futures
-
-        def autotune(choices):
-            return make_benchmark_fn()(choices)
-
+        
         if config.autotune_in_subproc:
             from .autotune_process import tuning_pool
 
             # do the optional warmup
             tuning_pool.initialize()
 
-        def do_autotuning(precompile_fn):
-            precompile_start_ts = time.time()
-            precompile_fn()
-            precompile_elapse = time.time() - precompile_start_ts
+        @functools.lru_cache(None)
+        def make_benchmark_fn():
+            counters["inductor"]["select_algorithm_autotune"] += 1
+            return self.make_benchmark_fn(choices, input_nodes, layout, input_gen_fns)
 
-            autotune_start_ts = time.time()
-            timings = self.lookup(
+        def autotune(wait_on_precompile):
+            start_time = time.perf_counter()
+            wait_on_precompile()
+            end_time = time.perf_counter()
+            wait_on_precompile_time = end_time - start_time
+
+            start_time = time.perf_counter()
+            choice_to_timing = self.lookup(
                 choices,
                 name,
                 inputs_key,
-                autotune,
+                lambda choices: make_benchmark_fn()(choices),
             )
-            autotune_elapse = time.time() - autotune_start_ts
+            end_time = time.perf_counter()
+            autotuning_time = end_time - start_time
 
-            if timings and all(
-                not math.isfinite(timing) for timing in timings.values()
+            if (
+                (choice_to_timing == {})
+                or all([not math.isfinite(timing) for timing in choice_to_timing.values()])
             ):
                 raise NoValidChoicesError
 
-            if make_benchmark_fn.cache_info().currsize:
-                counters["inductor"]["select_algorithm_autotune"] += 1
-
             if (
-                make_benchmark_fn.cache_info().currsize
-                or log.getEffectiveLevel() == logging.DEBUG
-                or config.trace.log_autotuning_results
+                (make_benchmark_fn.cache_info().currsize > 1)
+                or (log.getEffectiveLevel() == logging.DEBUG)
+                or (config.trace.log_autotuning_results)
             ):
                 self.log_results(
-                    name, input_nodes, timings, autotune_elapse, precompile_elapse
+                    name, input_nodes, choice_to_timing, autotuning_time, wait_on_precompile_time
                 )
 
-            return timings
+            return choice_to_timing
 
-        precompile_fn = precompile(choices)
-
-        if return_multi_template and (config.max_autotune or config.max_autotune_gemm):
-
-            def get_timings():
-                timings = do_autotuning(precompile_fn)
-                min_extern_choice = float("inf")
-                for choice, timing in timings.items():
-                    if isinstance(choice, ExternKernelCaller):
-                        min_extern_choice = min(min_extern_choice, timing)
-
-                timings = {
-                    choice: time
-                    for choice, time in timings.items()
-                    if (
-                        time <= min_extern_choice
-                        or not isinstance(choice, ExternKernelCaller)
-                    )
-                }
-
-                return timings
-
+        wait_on_precompile = precompile(choices)
+        
+        if return_multi_template:
             return torch._inductor.ir.TensorBox.create(
                 torch._inductor.ir.MultiTemplateBuffer(
                     layout,
                     input_nodes,
-                    get_timings,
+                    autotune(wait_on_precompile),
                 )
             )
+        else:
+            choice_to_timing = autotune(wait_on_precompile)
 
-        # TODO - dont want to precompile if we have a cache hit
-        timings = do_autotuning(precompile_fn)
-        if timings == {} or choices[0] not in timings:
-            return choices[0].output_node()
+            if (choice_to_timing == {}):
+                return choices[0].output_node()
 
-        selected_key = builtins.min(timings, key=timings.__getitem__)
-        selected_time = timings[selected_key]
-        selected_choice = selected_key.output_node()
-        log.debug("selected choice: %s", str(selected_choice))
-        return selected_choice
+            selected_choice = min(choice_to_timing, key=choice_to_timing.__getitem__)
+            selected_choice_output_node = selected_choice.output_node()
+
+            log.debug("Autotuner selected choice: %s", str(selected_choice_output_node))
+
+            return selected_choice_output_node
+    
+    def precompile(self, name: str, inputs_key: str, choices: List[ChoiceCaller], timeout: int = 3600) -> Callable[[], None]:
+        no_op = lambda: None
+        
+        if len(choices) == 0:
+            return no_op
+        
+        if timeout <= 0:
+            return no_op
+
+        env_workers = get_env_num_workers()
+        num_workers = env_workers if env_workers is not None else (len(choices))
+
+        if num_workers == 0:
+            return no_op
+
+        # https://github.com/python/cpython/issues/106905
+        if (
+            sys.version_info.major == 3
+            and sys.version_info.minor == 11
+            and sys.version_info.micro <= 8
+        ):
+            return no_op
+
+        precompile_key = (
+            name
+            + inputs_key
+            + str(torch.get_float32_matmul_precision())
+            + "".join([choice.hash_key() for choice in choices])
+        )
+
+        wait_on_precompile = self.precompile_cache.get(precompile_key, None)
+        if wait_on_precompile is not None:
+            return wait_on_precompile
+
+        log.info(
+            "Multithreaded precompilation for %d choices using %d worker threads",
+            len(choices),
+            num_workers,
+        )
+
+        # In rare circumstances, because python threads inherit global state,
+        # thread pool executor can race and leave stdout/stderr in a state
+        # different than the original values. we explicitly restore the state
+        # here to avoid this issue.
+
+        initial_stdout = sys.stdout
+        initial_stderr = sys.stderr
+
+        def precompile_with_captured_stdout(choice):
+            with restore_stdout_stderr(initial_stdout, initial_stderr):
+                return choice.precompile()
+
+        executor = ThreadPoolExecutor(max_workers=num_workers)
+
+        futures = {}
+        for c in choices:
+            if hasattr(c, "precompile"):
+                future = executor.submit(precompile_with_captured_stdout, c)
+                futures[future] = c
+
+        @functools.lru_cache(None)
+        @restore_stdout_stderr(initial_stdout, initial_stderr)
+        def wait_on_precompile():
+            counters["inductor"]["select_algorithm_precompile"] += 1
+            for future in as_completed(
+                futures,
+                timeout=timeout,
+            ):
+                if e := future.exception():
+                    log.error(
+                        "Exception %s for benchmark choice %s", e, futures[future]
+                    )
+
+            executor.shutdown(wait=True)
+
+        self.precompile_cache[precompile_key] = wait_on_precompile
+
+        return wait_on_precompile
 
     @classmethod
     def make_benchmark_fn(
@@ -1659,12 +1660,6 @@ def autotune_select_algorithm(*args, **kwargs):
         ] = torch._inductor.config.benchmark_epilogue_fusion
 
     return _ALGORITHM_SELECTOR_CACHE(*args, **kwargs)
-
-
-def realize_inputs(*args):
-    if len(args) == 1:
-        return ir.ExternKernel.require_stride1(ir.ExternKernel.realize_input(args[0]))
-    return [realize_inputs(x) for x in args]
 
 
 # ensure lowering is imported so that `extern_kernels.*` is populated
