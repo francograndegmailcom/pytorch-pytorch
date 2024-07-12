@@ -319,28 +319,7 @@ torch.testing._internal.common_methods_invocations.wrapper_set_seed = (
 )
 
 
-def default_comparator_assert(
-    self: TestCase,
-    ref_inputs,
-    example_inputs,
-    correct,
-    actual,
-    *,
-    atol=None,
-    rtol=None,
-    exact_dtype=True,
-):
-    self.assertEqual(
-        actual,
-        correct,
-        atol=atol,
-        rtol=rtol,
-        equal_nan=True,
-        exact_dtype=exact_dtype,
-    )
-
-
-def argsort_comparator_assert(
+def argsort_equal_checker(
     self: TestCase,
     ref_inputs,
     example_inputs,
@@ -361,7 +340,7 @@ def argsort_comparator_assert(
     )
 
 
-def sort_comparator_assert(
+def sort_equal_checker(
     self: TestCase,
     ref_inputs,
     example_inputs,
@@ -475,8 +454,8 @@ inductor_override_kwargs = {
     ("index_reduce.amax", "cuda", f32): {"check_gradient": False},
     ("index_reduce.amax", "cuda", f16): {"check_gradient": False},
     ("tanh", "cuda", f16): {"atol": 1e-4, "rtol": 1e-2},
-    ("argsort", "cpu"): {"comparator_assert": argsort_comparator_assert},
-    ("sort", "cpu"): {"comparator_assert": sort_comparator_assert},
+    ("argsort", "cpu"): {"equal_checker": argsort_equal_checker},
+    ("sort", "cpu"): {"equal_checker": sort_equal_checker},
 }
 
 
@@ -722,7 +701,7 @@ class TestInductorOpInfo(TestCase):
                                 "output_process_fn_grad": sample_input.output_process_fn_grad,
                                 "atol": atol,
                                 "rtol": rtol,
-                                "comparator_assert": default_comparator_assert,
+                                "equal_checker": None,
                             }
                             adjusted_kwargs.update(overridden_kwargs)
                             adjusted_kwargs.update(kwarg_overrides)
@@ -744,7 +723,7 @@ class TestInductorOpInfo(TestCase):
                                 "check_gradient": False,
                                 "atol": atol,
                                 "rtol": rtol,
-                                "comparator_assert": default_comparator_assert,
+                                "equal_checker": None,
                             }
                             adjusted_kwargs.update(overridden_kwargs)
                             adjusted_kwargs.update(kwarg_overrides)

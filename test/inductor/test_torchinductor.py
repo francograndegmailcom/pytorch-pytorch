@@ -363,7 +363,7 @@ def check_model(
     assert_equal=True,
     check_gradient=False,
     check_has_compiled=True,
-    comparator_assert=None,
+    equal_checker=None,
     output_process_fn_grad=lambda x: x,
 ):
     kwargs = kwargs or {}
@@ -424,6 +424,29 @@ def check_model(
     def run(*ex, **kwargs):
         return model(*ex, **kwargs)
 
+    def default_equal_checker(
+        self: TestCase,
+        ref_inputs,
+        example_inputs,
+        correct,
+        actual,
+        *,
+        atol=None,
+        rtol=None,
+        exact_dtype=True,
+    ):
+        self.assertEqual(
+            actual,
+            correct,
+            atol=atol,
+            rtol=rtol,
+            equal_nan=True,
+            exact_dtype=exact_dtype,
+        )
+
+    if equal_checker is None:
+        equal_checker = default_equal_checker
+
     run = torch._dynamo.optimize(compile_fx_wrapper, nopython=nopython)(run)
 
     torch.manual_seed(0)
@@ -468,7 +491,7 @@ def check_model(
         correct = tree_unflatten(correct_flat, correct_spec)
 
     if assert_equal:
-        comparator_assert(
+        equal_checker(
             self,
             ref_inputs,
             example_inputs,
