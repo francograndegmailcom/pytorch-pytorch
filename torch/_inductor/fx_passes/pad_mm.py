@@ -10,6 +10,7 @@ import torch._inductor.runtime.runtime_utils
 from torch import Tensor
 from torch._dynamo.utils import counters
 from torch._inductor import utils
+from torch._inductor.runtime.benchmarking import benchmarker
 from torch._subclasses.fake_tensor import FakeTensor
 from torch.utils._mode_utils import no_dispatch
 
@@ -313,10 +314,6 @@ def should_exclude_padding_time(match, arg_name):
 def should_pad_bench(
     match, mat1: Tensor, mat2: Tensor, op, input: Optional[Tensor] = None
 ) -> bool:
-    do_bench = functools.partial(
-        torch._inductor.runtime.runtime_utils.do_bench_gpu,
-        warmup=5,
-    )
     m_padded_length = 0
     n_padded_length = 0
     batchsize = 1
@@ -393,16 +390,12 @@ def should_pad_bench(
         ori_time = get_cached_base_mm_benchmark_time(ori_time_key)
         if ori_time is None:
             if op is torch.ops.aten.bmm or op is torch.ops.aten.mm:
-                ori_time = do_bench(
-                    lambda: op(mat1, mat2),
-                )
+                ori_time = benchmarker.benchmark_gpu(lambda: op(mat1, mat2))
             else:
                 if input is not None:
                     # realize bias for addmm
                     input = realize_tensor(input)
-                ori_time = do_bench(
-                    lambda: op(input, mat1, mat2),
-                )
+                ori_time = benchmarker.benchmark_gpu(lambda: op(input, mat1, mat2))
             set_cached_base_mm_benchmark_time(ori_time_key, ori_time)
 
         mat1_pad = mat1
@@ -485,7 +478,7 @@ def should_pad_bench(
                 )
             )
 
-        pad_time = do_bench(lambda: [fn() for fn in fns])
+        pad_time = benchmarker.benchmark_gpu(lambda: [fn() for fn in fns])
 
         # Shape padding introduces additional memory ops. Based on microbenchmarks, 1.1x represents a reasonable
         # tradeoff between performance improvement from shape padding and overhead from additional memory ops
