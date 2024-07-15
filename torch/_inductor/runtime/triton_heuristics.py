@@ -29,12 +29,12 @@ from .hints import (
     TileHint,
     TRITON_MAX_BLOCK,
 )
+from .benchmarking import benchmarker
 from .runtime_utils import (
     cache_dir,
     ceildiv,
     conditional_product,
     create_bandwidth_info_str,
-    do_bench_gpu,
     dynamo_timed,
     get_first_attr,
     get_max_y_grid,
@@ -210,7 +210,6 @@ class CachingAutotuner(KernelInterface):
                 "triton",
                 str(self.triton_meta.get("device", 0)),
             )
-        log.debug("Triton cache dir: %s", os.environ["TRITON_CACHE_DIR"])
 
         self.size_hints = size_hints
         self.coordesc_tuner = CoordescTuner(
@@ -664,7 +663,7 @@ class CachingAutotuner(KernelInterface):
                 stream=stream,
             )
 
-        return do_bench_gpu(kernel_call, rep=40, fast_flush=True)
+        return benchmarker.benchmark_gpu(kernel_call)
 
     def clone_args(self, *args, **kwargs) -> Tuple[List[Any], Dict[str, Any]]:
         from ..compile_fx import clone_preserve_strides
