@@ -1020,23 +1020,39 @@ class BuiltinVariable(VariableTracker):
     def call_str(self, tx, arg):
         # Handle `str` on a user defined function or object
         print("On Call Function")
-        def debug_ci_checks(arg):
-            print("Checking edge case in CI for test_ParameterList_meta")
-            print(arg)
-            print("dir(arg)")
-            print(dir(arg))
-            print("arg.__dict__")
-            print(arg.__dict__)
+        def debug_ci_checks(arg, label):
+            try:
+                print(f"======> ({label}) Checking edge case in CI for test_ParameterList_meta")
+                print(arg)
+                print("dir(arg)")
+                print(dir(arg))
+                print("arg.__dict__")
+                print(arg.__dict__)
+            except Exception as e:
+                print("Failed to print debug_ci_checks")
+                print(e)
 
         if isinstance(arg, (variables.UserFunctionVariable)):
             return variables.ConstantVariable.create(value=str(arg.fn))
-        elif isinstance(arg, (variables.UserDefinedObjectVariable)) and hasattr(arg, 'value'):
+        elif isinstance(arg, (variables.UserDefinedObjectVariable)):
             print("Attempting to call str on UserDefinedObjectVariable")
-            return variables.ConstantVariable.create(value=str(arg.value))
-        elif isinstance(arg, (variables.UserDefinedObjectVariable)) and not hasattr(arg, 'value'):
-            debug_ci_checks(arg)
-        elif isinstance(arg, (variables.UserDefinedObjectVariable)) and not hasattr(arg, '_size'):
-            debug_ci_checks(arg)
+            debug_ci_checks(arg, 'arg')
+            if hasattr(arg, 'value'):
+                debug_ci_checks(arg.value, 'arg.value')
+                try:
+                    return variables.ConstantVariable.create(value=str(arg.value))
+                except Exception as e:
+                    if hasattr(arg.value, '_size'):
+                        print("Unkown error in str(arg.value): arg.value._size exists")
+                        raise e
+                    else:
+                        print("Not suitable for str(arg.value) - might be due to missing _size attribute if is a ParameterList")
+                        raise e
+            else:
+                print("Not suitable for str(arg.value) due to missing value attribute")
+
+        else:
+            print("Argument is not a UserFunctionVariable or UserDefinedObjectVariable")
 
     def _call_min_max(self, tx, *args):
         if len(args) == 1 and args[0].has_unpack_var_sequence(tx):
