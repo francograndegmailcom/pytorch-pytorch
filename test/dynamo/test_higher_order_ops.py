@@ -39,9 +39,7 @@ requires_cuda = unittest.skipUnless(HAS_CUDA, "requires cuda")
 
 def check_dynamic_shape_capture():
     # This also mirrors config from `test/dynamo/test_dynamic_shapes.py:make_dynamic_cls`
-    if not config.assume_static_by_default:
-        return True
-    return False
+    return not config.assume_static_by_default
 
 
 def count_ops(gm, args, freq, op):
@@ -334,7 +332,7 @@ class GraphModule(torch.nn.Module):
         getitem: "f32[]" = wrap[0];  wrap = None
         return (getitem,)
 
-    class GraphModule(torch.nn.Module):
+    class wrap_body_0(torch.nn.Module):
         def forward(self, l_d_x_: "f32[]", l_d_y_0_: "f32[]", l_d_y_1_2_: "f32[]"):
             sin: "f32[]" = l_d_x_.sin();  l_d_x_ = None
             cos: "f32[]" = l_d_y_0_.cos();  l_d_y_0_ = None
@@ -372,7 +370,7 @@ class GraphModule(torch.nn.Module):
         getitem: "f32[3]" = wrap[0];  wrap = None
         return (getitem,)
 
-    class GraphModule(torch.nn.Module):
+    class wrap_body_0(torch.nn.Module):
         def forward(self, l_x_: "f32[3, 1]"):
             view: "f32[3]" = l_x_.view(3);  l_x_ = None
             add: "f32[3]" = view + 0.5;  view = None
@@ -392,7 +390,7 @@ class GraphModule(torch.nn.Module):
         getitem: "f32[s0]" = wrap[0];  wrap = None
         return (getitem,)
 
-    class GraphModule(torch.nn.Module):
+    class wrap_body_0(torch.nn.Module):
         def forward(self, l_x_: "f32[s0, 1]", size: "Sym(s0)"):
             view: "f32[s0]" = l_x_.view(size);  l_x_ = size = None
             add: "f32[s0]" = view + 0.5;  view = None
@@ -540,6 +538,67 @@ class GraphModule(torch.nn.Module):
         # Since, `x` is unused, we don't lift it to
         # be the input.
         self._test_wrap_simple(f, default_args_generator((x,)), 2, 3)
+
+    def test_register_subclass(self):
+        from torch._higher_order_ops.cond import cond_op
+        from torch.testing._internal.two_tensor import TwoTensor
+
+        a = torch.tensor([1.0, 0.0, 1.0])
+        b = torch.randn(3)
+        t = TwoTensor(a, b)
+        res = cond_op(a.sum() > 0, torch.sin, torch.cos, (t,))
+        self.assertEqual(res.a, torch.sin(a))
+        self.assertEqual(res.b, torch.sin(b))
+
+        called = 0
+
+        # Using cond.py_impl
+        @cond_op.py_impl(TwoTensor)
+        def _(pred, true_fn, false_fn, operands):
+            nonlocal called
+            called += 1
+            assert len(operands) == 1
+            a = cond_op(pred, true_fn, false_fn, (operands[0].a,))
+            b = cond_op(pred, true_fn, false_fn, (operands[0].b,))
+            return TwoTensor(a, b)
+
+        res = cond_op(a.sum() > 0, torch.sin, torch.cos, (t,))
+        self.assertEqual(res.a, torch.sin(a))
+        self.assertEqual(res.b, torch.sin(b))
+        self.assertEqual(called, 1)
+
+    def test_register_mode(self):
+        from torch._higher_order_ops.cond import cond_op
+
+        torch_dispatch_called = 0
+
+        class MyMode(torch.utils._python_dispatch.TorchDispatchMode):
+            def __torch_dispatch__(self, func, types, args=(), kwargs=None):
+                nonlocal torch_dispatch_called
+                torch_dispatch_called += 1
+                return func(*args, **kwargs)
+
+        a = torch.tensor([1.0, 0.1, 1.0])
+        pred = a.sum() > 0
+        with MyMode():
+            res = cond_op(pred, torch.sin, torch.cos, (a,))
+        self.assertEqual(res, a.sin())
+        self.assertEqual(torch_dispatch_called, 1)
+
+        py_impl_called = 0
+
+        # Using cond.py_impl
+        @cond_op.py_impl(MyMode)
+        def _(mode, pred, true_fn, false_fn, operands):
+            nonlocal py_impl_called
+            py_impl_called += 1
+            return cond_op(pred, true_fn, false_fn, operands)
+
+        a = torch.tensor([1.0, 0.1, 1.0])
+        pred = a.sum() > 0
+        with MyMode():
+            res = cond_op(pred, torch.sin, torch.cos, (a,))
+        self.assertEqual(res, a.sin())
 
     def test_capture_value_created_in_subgraph(self):
         backend = EagerAndRecordGraphs()
@@ -1406,7 +1465,7 @@ def forward(self, child, const_unused):
                 def false_fn(x):
                     return (x - 1).sum()
 
-                return control_flow.cond(x.shape[0] > 4, true_fn, false_fn, [x])
+                return control_flow.cond(x.sum() > 4, true_fn, false_fn, [x])
 
         mod_for_compile = torch.compile(Foo(), backend=cnt, dynamic=True)
         mod_for_eager = Foo()
@@ -1789,7 +1848,7 @@ class GraphModule(torch.nn.Module):
         getitem_1: "f32[3]" = wrap[1];  wrap = None
         return (getitem, getitem_1)
 
-    class GraphModule(torch.nn.Module):
+    class wrap_body_0(torch.nn.Module):
         def forward(self, l_arg1_0_: "f32[3]", l_arg2_0_: "f32[3]"):
             child: "f32[3]" = l_arg1_0_ + 1;  l_arg1_0_ = None
 
@@ -1988,7 +2047,7 @@ class GraphModule(torch.nn.Module):
         add: "f32[2, 3]" = a + b;  a = b = None
         return (add,)
 
-    class GraphModule(torch.nn.Module):
+    class wrap_body_0(torch.nn.Module):
         def forward(self, l_x_: "f32[2, 3]"):
             child: "f32[2, 3]" = l_x_.sin()
             child_1: "f32[2, 3]" = l_x_.cos();  l_x_ = None
@@ -2023,7 +2082,7 @@ class GraphModule(torch.nn.Module):
         getitem: "f32[3]" = wrap[0];  wrap = None
         return (getitem,)
 
-    class GraphModule(torch.nn.Module):
+    class wrap_body_0(torch.nn.Module):
         def forward(self, l_x_: "f32[3]"):
             child: "f32[3]" = -l_x_;  l_x_ = None
             return (child,)
@@ -6145,12 +6204,16 @@ class ActivationCheckpointingTests(torch._dynamo.test_case.TestCase):
             return cond_op(pred=pred, true_fn=true_fn, false_fn=false_fn, operands=[x])
 
         cnt = CompileCounter()
-        opt_test = torch.compile(test, backend=cnt)
+        opt_test = torch.compile(test, backend=cnt, fullgraph=True)
         inp = torch.ones(3, 3)
-        self.assertTrue(torch.allclose(test(True, inp), opt_test(True, inp)))
+        true_pred = torch.Tensor([True])
+        false_pred = torch.Tensor([False])
+        self.assertTrue(torch.allclose(test(true_pred, inp), opt_test(true_pred, inp)))
         self.assertEqual(cnt.frame_count, 1)
-        self.assertTrue(torch.allclose(test(False, inp), opt_test(False, inp)))
-        self.assertEqual(cnt.frame_count, 2)
+        self.assertTrue(
+            torch.allclose(test(false_pred, inp), opt_test(false_pred, inp))
+        )
+        self.assertEqual(cnt.frame_count, 1)
 
     def test_cond_with_invalid_kwargs(self):
         from torch._higher_order_ops.cond import cond_op
