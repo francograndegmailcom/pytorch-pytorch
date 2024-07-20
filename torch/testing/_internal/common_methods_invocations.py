@@ -12163,18 +12163,13 @@ op_db: List[OpInfo] = [
                    dtypes=(torch.complex64, torch.complex128)),
            )),
     OpInfo('_convert_weight_to_int4pack',
-           dtypes=integral_types(),
+           dtypes=_dispatch_dtypes((torch.uint8,)),
            supports_autograd=True,
            sample_inputs_func=sample_inputs__convert_weight_to_int4pack,
            supports_fwgrad_bwgrad=False,
            supports_forward_ad=False,
            supports_out=False,
            skips=(
-               DecorateInfo(
-                   unittest.skip("Skipped!"),
-                   'TestMeta',
-                   'test_dispatch_meta_outplace',
-                   dtypes=(torch.int8, torch.int16, torch.int32, torch.int64)),
                DecorateInfo(
                    unittest.skip("Skipped!"),
                    'TestMeta',
