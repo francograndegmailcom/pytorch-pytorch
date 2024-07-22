@@ -76,7 +76,8 @@ struct TORCH_CUDA_CPP_API CUDAPluggableAllocator
 
   void set_init_fn(std::function<void(int)> init_fn);
 
-  void set_reset_fn(std::function<void()> reset_fn);
+  void set_reset_fn(
+      std::function<void(c10::DeviceIndex, c10::cuda::MempoolId_t)> reset_fn);
 
   void set_memory_fraction_fn(
       std::function<void(double, int)> memory_fraction_fn);
@@ -108,7 +109,9 @@ struct TORCH_CUDA_CPP_API CUDAPluggableAllocator
   void init(int device_count) override;
   bool initialized() override;
   void setMemoryFraction(double fraction, c10::DeviceIndex device) override;
-  void emptyCache() override;
+  void emptyCache(
+      c10::DeviceIndex device = -1,
+      c10::cuda::MempoolId_t mempool_id = {0, 0}) override;
   void cacheInfo(c10::DeviceIndex device, size_t* largestBlock) override;
   void* getBaseAllocation(void* ptr, size_t* size) override;
 
@@ -118,7 +121,9 @@ struct TORCH_CUDA_CPP_API CUDAPluggableAllocator
       c10::DeviceIndex device) override;
   void resetAccumulatedStats(c10::DeviceIndex device) override;
   void resetPeakStats(c10::DeviceIndex device) override;
-  c10::cuda::CUDACachingAllocator::SnapshotInfo snapshot() override;
+  c10::cuda::CUDACachingAllocator::SnapshotInfo snapshot(
+      c10::DeviceIndex device = -1,
+      c10::cuda::MempoolId_t mempool_id = {0, 0}) override;
   void beginAllocateToPool(
       c10::DeviceIndex device,
       c10::cuda::MempoolId_t mempool_id,
@@ -128,6 +133,9 @@ struct TORCH_CUDA_CPP_API CUDAPluggableAllocator
       c10::cuda::MempoolId_t mempool_id) override;
   void releasePool(c10::DeviceIndex device, c10::cuda::MempoolId_t mempool_id)
       override;
+  int getPoolUseCount(
+      c10::DeviceIndex device,
+      c10::cuda::MempoolId_t mempool_id) override;
   std::shared_ptr<void> getIpcDevPtr(std::string handle) override;
   c10::cuda::CUDACachingAllocator::ShareableHandle shareIpcHandle(
       void*) override;
@@ -164,7 +172,7 @@ struct TORCH_CUDA_CPP_API CUDAPluggableAllocator
   std::function<MallocFuncType> alloc_fn_;
   std::function<FreeFuncType> free_fn_;
   std::function<void(int)> init_fn_;
-  std::function<void()> reset_fn_;
+  std::function<void(c10::DeviceIndex, c10::cuda::MempoolId_t)> reset_fn_;
   std::function<void(double, int)> memory_fraction_fn_;
   std::function<void*(void*, size_t*)> base_alloc_fn_;
   std::function<void(void* ptr, cudaStream_t stream)> record_stream_fn_;
