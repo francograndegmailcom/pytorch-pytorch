@@ -276,6 +276,10 @@ else
   ( ! get_exit_code python setup.py clean] )
   ( ! get_exit_code python setup.py clean bad_argument )
 
+  if [[ -n "$TRITON_VERSION" ]]; then
+    checkout_install_triton_at_commit "$TRITON_VERSION"
+  fi
+
   if [[ "$BUILD_ENVIRONMENT" != *libtorch* ]]; then
     # rocm builds fail when WERROR=1
     # XLA test build fails when WERROR=1
