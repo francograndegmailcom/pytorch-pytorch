@@ -1203,10 +1203,10 @@ def sample_inputs_addmm(op_info, device, dtype, requires_grad, **kwargs):
         yield SampleInput(make_arg(M), make_arg(S, 0), make_arg(0, M), **kwargs).with_metadata(broadcasts_input=True)
 
 def sample_inputs__convert_weight_to_int4pack(op_info, device, dtype, requires_grad, **kwargs):
+    make_arg = partial(make_tensor, device=device, dtype=dtype, requires_grad=requires_grad)
     test_list = [((64, 32), 2), ((64, 48), 2), ((64, 64), 2), ((256, 128), 4), ((256, 128), 8)]
     for shape, innerKTiles in test_list:
-        q = torch.randint(0, 16, shape, dtype=dtype, device=device)
-        yield SampleInput(q, innerKTiles=innerKTiles,)
+        yield SampleInput(make_arg(shape, low=0, high=16), innerKTiles=innerKTiles,)
 
 def sample_inputs_sparse_sampled_addmm(op_info, device, dtype, requires_grad, **kwargs):
     alpha = 2 + 3j if dtype.is_complex else 0.6
