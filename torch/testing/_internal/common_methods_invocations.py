@@ -12164,7 +12164,7 @@ op_db: List[OpInfo] = [
            )),
     OpInfo('_convert_weight_to_int4pack',
            dtypes=_dispatch_dtypes((torch.uint8,)),
-           supports_autograd=True,
+           supports_autograd=False,
            sample_inputs_func=sample_inputs__convert_weight_to_int4pack,
            supports_fwgrad_bwgrad=False,
            supports_forward_ad=False,
