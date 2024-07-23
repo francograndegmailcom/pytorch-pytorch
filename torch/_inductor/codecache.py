@@ -45,11 +45,13 @@ from typing import (
     Set,
     Tuple,
     TYPE_CHECKING,
+    TypeVar,
     Union,
 )
 from typing_extensions import TypeAlias
 
 import torch
+from torch import SymInt, Tensor
 from torch._dynamo.utils import counters, dynamo_timed
 from torch._inductor import config, exc, metrics
 from torch._inductor.codegen.cuda import cuda_env
@@ -58,6 +60,7 @@ from torch._inductor.codegen.rocm.compile_command import (
     rocm_compiler,
 )
 
+T = TypeVar("T")
 
 """
 codecache.py, cpp_builder.py and cpu_vec_isa.py import rule:
@@ -160,7 +163,7 @@ def cpp_wrapper_cache_dir(name: str) -> str:
     return cpp_wrapper_build_directory
 
 
-def get_cpp_wrapper_cubin_path_name():
+def get_cpp_wrapper_cubin_path_name() -> str:
     return "cubin_path" if torch.version.hip is None else "hsaco_path"
 
 
@@ -362,7 +365,7 @@ def sha256_hash(data: bytes) -> str:
     return base64.b32encode(hashlib.sha256(data).digest())[:51].decode("utf-8").lower()
 
 
-def code_hash(code: Union[str, bytes], extra: str = ""):
+def code_hash(code: Union[str, bytes], extra: str = "") -> str:
     hashing_str = code if isinstance(code, bytes) else code.encode("utf-8")
     if extra != "":
         hashing_str = hashing_str + b"||" + extra.encode("utf-8")
@@ -383,7 +386,9 @@ def get_path(
     return basename, subdir, path
 
 
-def get_hash(content: Union[str, bytes], extra: str = "", hash_type: str = "code"):
+def get_hash(
+    content: Union[str, bytes], extra: str = "", hash_type: str = "code"
+) -> str:
     if hash_type == "code":
         return code_hash(content, extra)
     if hash_type in ["cubin", "hsaco", "spv"]:
@@ -444,11 +449,13 @@ class TensorMetadataAndValues:
     values: List[Any]
 
 
-def _ident(x: Any) -> Any:
+def _ident(x: T) -> T:
     return x
 
 
-def extract_tensor_metadata_for_cache_key(device_map, t):
+def extract_tensor_metadata_for_cache_key(
+    device_map: Dict[torch.device, torch.device], t: Tensor
+) -> TensorMetadata:
     """
     Extracts the tensor metadata and removes fields of the TensorMetadata
     that are not needed for caching
@@ -471,7 +478,9 @@ def extract_tensor_metadata_for_cache_key(device_map, t):
     return meta
 
 
-def _reduce_fake_tensor(device_map, t):
+def _reduce_fake_tensor(
+    device_map: Dict[torch.device, torch.device], t: Tensor
+) -> Tuple[Callable[[T], T], Tuple[TensorMetadata]]:
     """
     See FxGraphCachePickler. Custom reducer to pickle FakeTensors.
     """
@@ -479,7 +488,9 @@ def _reduce_fake_tensor(device_map, t):
     return (_ident, (metadata,))
 
 
-def _reduce_tensor(device_map, t):
+def _reduce_tensor(
+    device_map: Dict[torch.device, torch.device], t: Tensor
+) -> Tuple[Callable[[T], T], Tuple[TensorMetadataAndValues]]:
     """
     See FxGraphCachePickler. Custom reducer to pickle Tensors.
     If we see tensors, we know they're constants stored as attributes on
@@ -510,7 +521,7 @@ def _reduce_tensor(device_map, t):
     return (_ident, (TensorMetadataAndValues(metadata, values),))
 
 
-def _reduce_symint(s):
+def _reduce_symint(s: SymInt) -> Tuple[Callable[[T], T], Tuple[str]]:
     """
     See FxGraphCachePickler. Custom reducer to pickle SymInts.
     """
@@ -576,7 +587,7 @@ class FxGraphCachePickler(pickle.Pickler):
         return sha256_hash(serialized_data)
 
     @classmethod
-    def debug_lines(cls, inp: Any) -> List[str]:
+    def debug_lines(cls, inp: FxGraphHashDetails) -> List[str]:
         """
         Get a printable string describing in more detail all the attributes
         comprising an object. Useful for debugging when one graph hashes
@@ -610,7 +621,9 @@ class FxGraphCachePickler(pickle.Pickler):
         return lines
 
 
-def build_code_hash(roots, prefix, hasher):
+def build_code_hash(
+    roots: List[str] | None, prefix: str, hasher: hashlib._Hash
+) -> None:
     for lib in sorted(pkgutil.iter_modules(roots, prefix), key=lambda x: x.name):
         spec = lib.module_finder.find_spec(lib.name, None)
         assert spec is not None
@@ -625,13 +638,13 @@ def build_code_hash(roots, prefix, hasher):
 
 
 @functools.lru_cache(None)
-def torch_key():
+def torch_key() -> bytes:
     """
     Compute a key that contains relevant information about torch source files
     """
     if not config.is_fbcode():
 
-        def get_code_hash(root):
+        def get_code_hash(root: str) -> bytes:
             # This function isn't meant to be used outside of torch_key, just a
             # helper for clarity. Instead, use torch_key() directly when you need
             # a hash representing the state of the source code.
@@ -696,7 +709,7 @@ class FxGraphHashDetails:
         example_inputs: List[torch.Tensor],
         fx_kwargs: Dict[str, Any],
         inputs_to_check: Sequence[int],
-    ):
+    ) -> None:
         self.gm = gm
         self.example_inputs = example_inputs
 
@@ -960,10 +973,10 @@ class FxGraphCache:
         key: str,
         compiled_graph: CompiledFxGraph,
         example_inputs: List[torch.Tensor],
-        time_taken_ns,
-        local,
-        remote_cache,
-    ):
+        time_taken_ns: int,
+        local: bool,
+        remote_cache: None,
+    ) -> None:
         """
         Store a serialized CompiledFxGraph on disk.
         """
@@ -1189,7 +1202,7 @@ class CompiledFxGraph:
         disabled_cudagraphs_reason: Optional[str],
         metrics_deltas: metrics.CachedMetricsDeltas,
         counter_deltas: Counter[str],
-    ):
+    ) -> None:
         self.current_callable = current_callable
         self.cache_key = graph.cache_key
         if graph.cache_path:
