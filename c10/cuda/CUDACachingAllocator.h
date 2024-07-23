@@ -199,6 +199,21 @@ struct TraceEntry {
   trace_time_ time_{};
 };
 
+struct AnnotationEntry {
+  AnnotationEntry(c10::DeviceIndex device, approx_time_t time)
+      : device_(device) {
+    time_.approx_t_ = time;
+  }
+
+  void recordUserMetadata(const std::string& name, std::string value) {
+    metadata_[name] = std::move(value);
+  }
+
+  c10::DeviceIndex device_;
+  trace_time_ time_{};
+  std::unordered_map<std::string, std::string> metadata_;
+};
+
 struct AllocatorConfigInfo {
   double garbage_collection_threshold;
   size_t max_split_size;
@@ -213,6 +228,7 @@ struct AllocatorConfigInfo {
 struct SnapshotInfo {
   std::vector<SegmentInfo> segments;
   std::vector<std::vector<TraceEntry>> device_traces;
+  std::vector<AnnotationEntry> user_defined;
   AllocatorConfigInfo config_metadata;
 };
 
@@ -296,7 +312,8 @@ class CUDAAllocator : public Allocator {
       CreateContextFn context_recorder,
       size_t alloc_trace_max_entries,
       RecordContext when) = 0;
-  virtual void recordAnnotation(const std::shared_ptr<GatheredContext>& name){};
+  virtual void recordAnnotation(
+      const std::vector<std::pair<std::string, std::string>>& md){};
   virtual void attachOutOfMemoryObserver(OutOfMemoryObserver observer) = 0;
 
   // Attached AllocatorTraceTracker callbacks will be called while the
@@ -436,8 +453,9 @@ inline void recordHistory(
       enabled, context_recorder, alloc_trace_max_entries, when);
 }
 
-inline void recordAnnotation(const std::shared_ptr<GatheredContext>& name) {
-  return get()->recordAnnotation(name);
+inline void recordAnnotation(
+    const std::vector<std::pair<std::string, std::string>>& md) {
+  return get()->recordAnnotation(md);
 }
 
 inline bool isHistoryEnabled() {
