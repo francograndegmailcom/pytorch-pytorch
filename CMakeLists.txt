@@ -42,10 +42,20 @@ if(env_cxx_standard GREATER -1)
       "PyTorch requires -std=c++17. Please remove -std=c++ settings in your environment."
   )
 endif()
-set(CMAKE_CXX_STANDARD
-    17
-    CACHE STRING
-          "The C++ standard whose features are requested to build this target.")
+if(WIN32)
+  set(CMAKE_CXX_STANDARD
+      20
+      CACHE STRING
+            "The C++ standard whose features are requested to build this target.")
+  # https://devblogs.microsoft.com/cppblog/c17-feature-removals-and-deprecations/
+  add_compile_definitions(_HAS_FEATURES_REMOVED_IN_CXX20)
+  add_compile_definitions(_SILENCE_ALL_CXX17_DEPRECATION_WARNINGS)
+else()
+  set(CMAKE_CXX_STANDARD
+      17
+      CACHE STRING
+            "The C++ standard whose features are requested to build this target.")
+endif()
 set(CMAKE_C_STANDARD
     11
     CACHE STRING
