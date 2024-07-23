@@ -1152,7 +1152,8 @@ class TestNN(NNTestCase):
 Parameter containing:
 tensor(..., device='meta', size=(1,), requires_grad=True)""")
         pl = torch.nn.ParameterList([p])
-        self.assertExpectedInline(str(pl), """ParameterList(  (0): Parameter containing: [torch.float32 of size 1])""")
+        # Note using str() instead of repr() below may cause '_size' attribute error
+        self.assertExpectedInline(repr(pl), """ParameterList(  (0): Parameter containing: [torch.float32 of size 1])""")
 
     def test_ParameterList_replication(self):
         # The actual replication code from DP cannot be used on CPU so doing it manually here
