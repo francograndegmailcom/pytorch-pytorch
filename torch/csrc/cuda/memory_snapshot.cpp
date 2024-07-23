@@ -105,17 +105,13 @@ void _initRecordAnnotations() {
         at::RecordFunctionCallback(
             [](const at::RecordFunction& fn)
                 -> std::unique_ptr<at::ObserverContext> {
-              unwind::Frame frame{fn.name(), "START", 0};
-              auto r = std::make_shared<CapturedTraceback>();
-              r->recordUserDefinedFrame(frame);
-              c10::cuda::CUDACachingAllocator::recordAnnotation(r);
+              c10::cuda::CUDACachingAllocator::recordAnnotation(
+                  {{"name", fn.name()}, {"stage", "START"}});
               return nullptr;
             },
             [](const at::RecordFunction& fn, at::ObserverContext* ctx_ptr) {
-              unwind::Frame frame{fn.name(), "END", 0};
-              auto r = std::make_shared<CapturedTraceback>();
-              r->recordUserDefinedFrame(frame);
-              c10::cuda::CUDACachingAllocator::recordAnnotation(r);
+              c10::cuda::CUDACachingAllocator::recordAnnotation(
+                  {{"name", fn.name()}, {"stage", "END"}});
             })
             .scopes({at::RecordScope::USER_SCOPE}));
   });
@@ -353,6 +349,17 @@ std::string _memory_snapshot_pickled() {
     traces.push_back(trace);
   }
 
+  auto user_defined = new_list();
+  for (const auto& ae : snapshot.user_defined) {
+    auto annotation_entry = new_dict();
+    for (const auto& md : ae.metadata_) {
+      annotation_entry.insert((IValue)md.first, md.second);
+    }
+    annotation_entry.insert(device_s, ae.device_);
+    annotation_entry.insert(time_us_s, ae.time_.t_);
+    user_defined.push_back(annotation_entry);
+  }
+
   auto allocator_settings = new_dict();
   IValue last_allocator_settings_s = "PYTORCH_CUDA_ALLOC_CONF";
   IValue max_split_size_s = "max_split_size";
@@ -395,6 +402,7 @@ std::string _memory_snapshot_pickled() {
   result.insert("segments", segments);
   result.insert("device_traces", traces);
   result.insert("allocator_settings", allocator_settings);
+  result.insert("user_defined", user_defined);
 
   auto frames = ivalue_symbolize(frame_tracebacks);
   for (auto i : c10::irange(frames.size())) {

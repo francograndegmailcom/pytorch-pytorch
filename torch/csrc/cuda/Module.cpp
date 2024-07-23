@@ -788,6 +788,17 @@ PyObject* THCPModule_memorySnapshot(PyObject* _unused, PyObject* noargs) {
     traces.append(trace);
   }
 
+  py::list user_defined;
+  for (const auto& ae : snapshot.user_defined) {
+    py::dict annotation_entry;
+    for (const auto& md : ae.metadata_) {
+      annotation_entry[(py::str)md.first] = md.second;
+    }
+    annotation_entry[device_s] = ae.device_;
+    annotation_entry[time_us_s] = ae.time_.t_;
+    user_defined.append(annotation_entry);
+  }
+
   py::dict allocator_settings;
   py::str last_allocator_settings_s = "PYTORCH_CUDA_ALLOC_CONF";
   py::str max_split_size_s = "max_split_size";
@@ -825,6 +836,7 @@ PyObject* THCPModule_memorySnapshot(PyObject* _unused, PyObject* noargs) {
   result["segments"] = segments;
   result["device_traces"] = traces;
   result["allocator_settings"] = allocator_settings;
+  result["user_defined"] = user_defined;
 
   auto frames = py_symbolize(to_gather_frames);
   for (auto i : c10::irange(frames.size())) {
