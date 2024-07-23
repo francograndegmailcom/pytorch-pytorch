@@ -683,9 +683,6 @@ def is_dynamo_supported():
 def check_if_inductor_supported():
     check_if_dynamo_supported()
 
-    if sys.platform == "win32":
-        raise RuntimeError("Windows not yet supported for inductor")
-
 
 def is_inductor_supported():
     try:
@@ -1464,6 +1461,11 @@ def export(
             assert out_guards is not None  # suppress mypy error
             parameter_names = list(original_signature.parameters.keys())
             fx_graph = torch.fx.Graph()
+            print("XU_DBG: flat_args", flat_args)
+            print("XU_DBG: in_spec", in_spec)
+            print(
+                "XU_DBG: enumerate(parameter_names)", list(enumerate(parameter_names))
+            )
             for i, name in enumerate(parameter_names):
                 if torch.is_tensor(flat_args[i]):
                     node = fx_graph.placeholder(name)
