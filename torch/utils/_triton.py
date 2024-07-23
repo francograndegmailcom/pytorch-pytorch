@@ -1,10 +1,14 @@
 # mypy: allow-untyped-defs
 import functools
 import hashlib
+import importlib
 
 
 @functools.lru_cache(None)
 def has_triton_package() -> bool:
+    triton_spec = importlib.util.find_spec("triton")
+    if triton_spec is None:
+        return False
     try:
         from triton.compiler.compiler import triton_key
 
